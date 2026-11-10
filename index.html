@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Balloon Defense</title>
+<link rel="icon" href="assets/ui/logo.svg">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading" class="screen on">
+  <img src="assets/ui/logo.svg" width="72" height="72" alt="">
+  <div class="title" style="font-size:34px">Balloon Defense</div>
+  <div class="bar"><i id="loadbar"></i></div>
+  <div class="muted" id="loadtxt">Loading art…</div>
+</div>
+
+<!-- Main menu -->
+<div id="menu" class="screen">
+  <div class="menuhead">
+    <img src="assets/ui/logo.svg" alt="">
+    <div><div class="title">Balloon Defense</div><div class="subtitle">Pop every balloon before it reaches the end of the road.</div></div>
+    <div class="grow"></div>
+    <div class="actions">
+      <div class="lvl" id="lvl"></div>
+      <button class="iconbtn" id="mStats" title="Your stats"><img src="assets/ui/chart.svg" alt="Stats"></button>
+      <button class="iconbtn" id="mHelp" title="How to play"><img src="assets/ui/help.svg" alt="Help"></button>
+      <button class="iconbtn" id="mSettings" title="Settings"><img src="assets/ui/gear.svg" alt="Settings"></button>
+    </div>
+  </div>
+  <div class="continue" id="continueBox">
+    <img src="assets/ui/play.svg" class="icon" alt="">
+    <div class="grow"><b id="contTitle">Continue</b><div class="muted" id="contSub" style="font-size:13px"></div></div>
+    <button class="btn" id="contDiscard">Discard</button>
+    <button class="btn primary" id="contGo">Continue</button>
+  </div>
+  <div class="daily" id="daily"></div>
+  <div class="tiers" id="tiers"></div>
+  <div class="maps" id="maps"></div>
+  <div class="menufoot" id="menufoot"></div>
+</div>
+
+<!-- Game -->
+<div id="game" class="screen">
+  <div id="hud">
+    <div class="hudmap"><b id="hMap">Map</b><span id="hDiff">Medium</span></div>
+    <div class="stat" id="sLivesBox" title="Lives"><img src="assets/ui/heart.svg" alt=""><span id="sLives">0</span></div>
+    <div class="stat" title="Cash"><img src="assets/ui/coin.svg" alt=""><span id="sCash">0</span></div>
+    <div class="roundbox"><div class="top">Round <b id="sRound">0</b><span id="sRoundOf">/ 40</span></div><div class="prog"><i id="sProg"></i></div></div>
+    <div class="next"><span id="nextLabel">Next:</span><div class="chips" id="nextChips"></div></div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="gSound" title="Sound on/off (M)"><img src="assets/ui/sound-off.svg" alt="Sound"></button>
+    <button class="iconbtn" id="gHelp" title="How to play (H)"><img src="assets/ui/help.svg" alt="Help"></button>
+    <button class="iconbtn" id="gSettings" title="Settings"><img src="assets/ui/gear.svg" alt="Settings"></button>
+    <button class="iconbtn" id="gPause" title="Pause (P / Esc)"><img src="assets/ui/pause.svg" alt="Pause"></button>
+  </div>
+  <div id="main">
+    <div id="stage">
+      <div id="board">
+        <canvas id="cv"></canvas>
+        <div id="vignette"></div>
+        <div id="bossbar"><b>COLOSSUS</b><div class="bar"><i id="bossHp"></i></div><span id="bossTxt"></span></div>
+        <div id="toasts"></div>
+        <div id="abilities"></div>
+        <button id="roundBtn" title="Start round / change speed (Space)"><img id="roundIcon" src="assets/ui/play.svg" alt=""><span id="roundTxt">START</span></button>
+      </div>
+    </div>
+    <aside id="side">
+      <div class="sidehead">Towers</div>
+      <div id="shop"></div>
+      <div id="info"></div>
+      <div class="sidehead">Selected</div>
+      <div id="panel"></div>
+    </aside>
+  </div>
+</div>
+
+<div id="bosskey"><span>Press ` to return</span></div>
+<div id="modal"><div class="card" id="modalCard"></div></div>
+
+<script src="js/data.js"></script>
+<script src="js/assets.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>
