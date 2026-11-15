@@ -32,7 +32,7 @@ function samples(E) {
 function bestSpot(E, type, pts) {
   const s = E.TD[type].base, range = s.range && s.range < 2000 ? s.range : s.aura || 100;
   const others = E.game.towers.filter(t => !E.TD[t.type].support);
-  let best = null, bestScore = -1;
+  let best = null, bestScore = -Infinity;
   for (let x = 20; x <= 940; x += 14) for (let y = 20; y <= 580; y += 14) {
     if (E.spotProblem(type, x, y)) continue;
     let score;
@@ -62,10 +62,10 @@ function step(E, a, pts) {
     E.upgrade(t, path);
     return true;
   }
-  // upAll: push the newest tower of this type along its main path, then path 0 to tier 1
+  // upAll: push the newest tower of this type along its main path, then path 0 to tier 2
   const t = mine[mine.length - 1];
   if (!t) return true;
-  for (const p of [1, 1, 1, 0]) {
+  for (const p of [1, 1, 1, 1, 1, 0, 0]) {
     if (E.canUp(t, p) !== 'ok') continue;
     if (g.cash < E.upgradeCost(t, p)) return false;
     E.upgrade(t, p);
@@ -79,7 +79,7 @@ function step(E, a, pts) {
  */
 function playBot(E, mapId, diffKey, mode = 'standard', opts = {}) {
   const maxRounds = opts.maxRounds || 50, dt = opts.dt || 1 / 40;
-  E.SETTINGS.unlockAll = true;
+  E.DEV.unlockAll = true;
   E.SETTINGS.autoStart = false;
   const mapIdx = E.MAPS.findIndex(m => m.id === mapId);
   if (mapIdx < 0) throw new Error('unknown map ' + mapId);

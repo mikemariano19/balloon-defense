@@ -9,9 +9,9 @@ const ASSET_LIST = (() => {
     for (const b of Object.keys(BT))
         l.push('balloons/' + b);
     l.push('balloons/camo', 'balloons/frozen');
-    ['tree', 'autumntree', 'bush', 'flowers', 'rock', 'icerock', 'lavarock', 'mushroom', 'cactus', 'drybush', 'deadtree', 'snowpine', 'pine']
+    ['tree', 'autumntree', 'bush', 'flowers', 'rock', 'icerock', 'lavarock', 'mushroom', 'cactus', 'drybush', 'deadtree', 'snowpine', 'pine', 'palm', 'crate', 'stall', 'fern', 'jungletree', 'boulder']
         .forEach(s => l.push('scenery/' + s));
-    ['grass', 'autumn', 'sand', 'snow', 'ash', 'dirt', 'sandpath', 'snowpath', 'basalt', 'water', 'lava', 'ice'].forEach(s => l.push('tiles/' + s));
+    ['grass', 'autumn', 'sand', 'snow', 'ash', 'dirt', 'sandpath', 'snowpath', 'basalt', 'water', 'lava', 'ice', 'jungle', 'stone'].forEach(s => l.push('tiles/' + s));
     return l;
 })();
 const PRERENDER = 3; // bitmap resolution multiplier (crisp on high-DPI screens)

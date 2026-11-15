@@ -1,3 +1,9 @@
 node_modules/
 _site/
 *.zip
+
+# shared-folder player data (profiles, chat, backups, events), not code
+balloon-defense-backups/
+balloon-defense-chat/
+balloon-defense-events/
+balloon-defense-players/
