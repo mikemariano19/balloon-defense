@@ -26,15 +26,163 @@ function newUid() { return (Date.now().toString(36) + Math.random().toString(36)
 function newTag() { return String(1000 + Math.floor(Math.random() * 9000)); }
 function createProfile(o) {
     const now = Date.now();
-    const id = { name: String(o.name).trim(), tag: newTag(), animal: o.animal || 'fox', style: o.style || 'm', bg: o.bg || 'sky', border: o.border || 'plain',
+    const id: any = { name: String(o.name).trim(), tag: newTag(), animal: o.animal || 'fox', style: o.style || 'm', bg: o.bg || 'sky', border: o.border || 'plain',
         title: 'rookie', created: now, uid: newUid(), home: { pc: thisPcId(), at: now } };
+    if (o.pw)
+        id.pw = makePw(o.pw, now);
     saveId(id);
     const pc = pcInfo();
     pc.owner = id.uid; // the profile made on a PC is that PC's own profile, and plays only there
     pc.extra = false;
     savePcInfo(pc);
+    setSession(id.uid); // registering logs you in
     return id;
 }
+/* ---------- Passwords and log-in (5.1) ----------
+   A password is kept with the profile as a salted hash (id.pw = { s: salt, h: hash, at: when it was set }), so it
+   travels with the profile to the shared folder and every PC can check it. The password itself is never stored.
+   Master control can reset a password: it records the time of the reset, and a password set before it no longer counts. */
+let SHA_K = null, SHA_H = null;
+/** SHA-256 of a text (UTF-8), as 64 hex digits. */
+function sha256(text) {
+    const s = unescape(encodeURIComponent(String(text))), rot = (v, n) => (v >>> n) | (v << (32 - n)), max = 4294967296;
+    if (!SHA_K) {
+        SHA_K = [];
+        SHA_H = [];
+        const comp = {};
+        for (let c = 2; SHA_K.length < 64; c++)
+            if (!comp[c]) {
+                for (let i = 0; i < 313; i += c)
+                    comp[i] = c;
+                SHA_H.push((Math.pow(c, .5) * max) | 0);
+                SHA_K.push((Math.pow(c, 1 / 3) * max) | 0);
+            }
+    }
+    let m = s + '\x80';
+    while (m.length % 64 - 56)
+        m += '\x00';
+    const words = [];
+    for (let i = 0; i < m.length; i++)
+        words[i >> 2] |= m.charCodeAt(i) << ((3 - i) % 4) * 8;
+    words.push((s.length * 8 / max) | 0, s.length * 8);
+    let hash = SHA_H.slice(0, 8);
+    for (let j = 0; j < words.length;) {
+        const w = words.slice(j, j += 16), old = hash;
+        hash = hash.slice(0, 8);
+        for (let i = 0; i < 64; i++) {
+            const w15 = w[i - 15], w2 = w[i - 2], a = hash[0], e = hash[4];
+            if (i >= 16)
+                w[i] = (w[i - 16] + (rot(w15, 7) ^ rot(w15, 18) ^ (w15 >>> 3)) + w[i - 7] + (rot(w2, 17) ^ rot(w2, 19) ^ (w2 >>> 10))) | 0;
+            const t1 = hash[7] + (rot(e, 6) ^ rot(e, 11) ^ rot(e, 25)) + ((e & hash[5]) ^ (~e & hash[6])) + SHA_K[i] + (w[i] | 0);
+            const t2 = (rot(a, 2) ^ rot(a, 13) ^ rot(a, 22)) + ((a & hash[1]) ^ (a & hash[2]) ^ (hash[1] & hash[2]));
+            hash = [(t1 + t2) | 0].concat(hash);
+            hash[4] = (hash[4] + t1) | 0;
+        }
+        for (let i = 0; i < 8; i++)
+            hash[i] = (hash[i] + old[i]) | 0;
+    }
+    let out = '';
+    for (let i = 0; i < 8; i++)
+        out += ('0000000' + (hash[i] >>> 0).toString(16)).slice(-8);
+    return out;
+}
+/** The stored form of a password: many rounds of salted SHA-256, so a copied file doesn't give the password away easily. */
+function pwHash(pw, salt) {
+    let h = sha256(salt + ':' + String(pw));
+    for (let i = 0; i < 300; i++)
+        h = sha256(h + salt);
+    return h;
+}
+function makePw(pw, now = Date.now()) { const s = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 8); return { s, h: pwHash(pw, s), at: now }; }
+function pwProblem(pw, again?) {
+    const p = String(pw || '');
+    if (p.length < 4)
+        return 'Use at least 4 characters';
+    if (p.length > 40)
+        return 'Use 40 characters or fewer';
+    if (again !== undefined && p !== String(again))
+        return 'The two passwords are not the same';
+    return '';
+}
+/* Master control data: the master password (salted hash) and the password resets ({ uid: time }). Kept in this browser
+   and in <folder>/balloon-defense-admin/admin.json, so every PC on the shared folder uses the same ones. */
+const ADMIN_KEY = 'balloonDefense.admin';
+function cleanAdmin(o) {
+    const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+    o = obj(o);
+    const m = obj(o.master), resets = {};
+    for (const [k, v] of Object.entries(obj(o.resets)))
+        if (/^[a-z0-9]{6,20}$/.test(k) && +v > 0)
+            resets[k] = +v;
+    return { master: typeof m.h === 'string' && typeof m.s === 'string' ? { s: m.s, h: m.h, at: +m.at || 0 } : null, resets };
+}
+function adminData() {
+    try {
+        return cleanAdmin(JSON.parse(localStorage.getItem(ADMIN_KEY) || 'null'));
+    }
+    catch (e) {
+        return cleanAdmin(null);
+    }
+}
+function saveAdminData(o) {
+    try {
+        localStorage.setItem(ADMIN_KEY, JSON.stringify(cleanAdmin(o)));
+    }
+    catch (e) { }
+}
+/** Two copies of the master control data merged: the newer master password, and the latest reset of each profile. */
+function mergeAdmin(a, b) {
+    a = cleanAdmin(a);
+    b = cleanAdmin(b);
+    const resets = Object.assign({}, a.resets);
+    for (const [k, v] of Object.entries(b.resets))
+        resets[k] = Math.max(+resets[k] || 0, +v);
+    const master = !a.master ? b.master : !b.master ? a.master : (b.master.at > a.master.at ? b.master : a.master);
+    return { master, resets };
+}
+function resetAt(uid) { return +adminData().resets[uid] || 0; }
+/** True when this profile has a password that still counts (set after the last reset from master control). */
+function hasPassword(id) { return !!(id && id.pw && typeof id.pw.h === 'string' && typeof id.pw.s === 'string' && (+id.pw.at || 0) > resetAt(id.uid)); }
+function checkPassword(id, pw) { return hasPassword(id) && pwHash(pw, id.pw.s) === id.pw.h; }
+function masterSet() { return !!adminData().master; }
+function checkMaster(pw) { const m = adminData().master; return !!m && pwHash(pw, m.s) === m.h; }
+/** The newest copy of a profile's id that this PC knows (its own save slot or the shared folder): the newest password wins. */
+function bestId(uid) {
+    let best = null;
+    for (const k of roster().keys) {
+        const id = readSlot(k).id;
+        if (id && id.uid === uid && (!best || pwAt(id) > pwAt(best)))
+            best = id;
+    }
+    const o = sharedCache().players.find(x => x && x.uid === uid && !x.deleted);
+    if (o && o.id && (!best || pwAt(o.id) > pwAt(best)))
+        best = Object.assign({}, best || {}, o.id, { uid });
+    return best;
+}
+function pwAt(id) { return (id && id.pw && +id.pw.at) || 0; }
+/** The log-in of this browser tab (sessionStorage): closing the browser logs you out. */
+const SESSION_KEY = 'balloonDefense.session';
+function sessionOn() { try {
+    return typeof sessionStorage !== 'undefined' && !!sessionStorage;
+}
+catch (e) {
+    return false;
+} }
+function sessionUid() { try {
+    return sessionStorage.getItem(SESSION_KEY) || '';
+}
+catch (e) {
+    return '';
+} }
+function setSession(uid) { try {
+    if (uid)
+        sessionStorage.setItem(SESSION_KEY, uid);
+    else
+        sessionStorage.removeItem(SESSION_KEY);
+}
+catch (e) { } }
+/** True when the active profile plays on this PC and is logged in on this tab. Only then can it play, chat or show online. */
+function loggedIn() { const id = getId(); return activePlayable() && (!sessionOn() || sessionUid() === id.uid); }
 /* ---------- Home PC (5.0) ----------
    A profile plays only on its home PC: id.home = { pc, at }. Other PCs show it, view-only. "Find my profile" moves it
    to a new PC (a newer claim), and the old PC then can't play it any more. */
@@ -150,7 +298,8 @@ function localPlayers() {
             catch (e) { }
         }
         return { key, id, me: key === ACTIVE_KEY, remote: false, profile: Object.assign({}, PROFILE_DEFAULT, s.profile || {}), runs: s.runs || {},
-            towers: s.towers || {}, records: s.records || {}, daily: s.daily || {}, dailyRuns: s.dailyRuns || {}, wbHist: s.wbHist || {}, updated: +s.updated || 0 };
+            towers: s.towers || {}, records: s.records || {}, daily: s.daily || {}, dailyRuns: s.dailyRuns || {}, wbHist: s.wbHist || {}, updated: +s.updated || 0,
+            history: Array.isArray(s.history) ? s.history : [] };
     }).filter(Boolean);
 }
 /* ---------- One profile on several PCs ----------
@@ -217,6 +366,17 @@ function mergeSaves(a, b) {
         if (n && (+h.d || 0) > (+n.d || 0))
             wh[k] = h;
     }
+    // game history: both lists, the newest 30
+    const hist = new Map();
+    for (const x of [...(Array.isArray(older.history) ? older.history : []), ...(Array.isArray(newer.history) ? newer.history : [])])
+        if (x && x.id)
+            hist.set(x.id, x);
+    if (hist.size)
+        out.history = [...hist.values()].sort((x, y) => (+y.at || 0) - (+x.at || 0)).slice(0, HISTORY_MAX);
+    // the password set last wins (a copy saved later may still carry an older one)
+    const pwa = obj(older.id).pw, pwb = obj(newer.id).pw;
+    if (out.id && pwa && pwa.h && (+pwa.at || 0) > ((pwb && +pwb.at) || 0))
+        out.id.pw = Object.assign({}, pwa);
     // notifications: both lists, the newest 10
     const notes = new Map();
     for (const x of [...(Array.isArray(older.notes) ? older.notes : []), ...(Array.isArray(newer.notes) ? newer.notes : [])])
@@ -243,7 +403,7 @@ function stableJSON(v) {
 function progressSig(s) {
     s = s || {};
     return stableJSON({ id: s.id || null, profile: s.profile || {}, towers: s.towers || {}, runs: s.runs || {}, records: s.records || {}, daily: s.daily || {},
-        dailyRuns: s.dailyRuns || {}, wbHist: s.wbHist || {}, notes: s.notes || [] });
+        dailyRuns: s.dailyRuns || {}, wbHist: s.wbHist || {}, notes: s.notes || [], history: s.history || [] });
 }
 /** A few numbers that only ever go up: used to pick the copy with the most progress and to spot a lost profile. */
 function progressScore(s) {
@@ -352,10 +512,40 @@ function inUseElsewhere(uid, now = Date.now()) {
 /** Online (green dot): this PC's active profile, or a profile with a heartbeat from any PC in the last 2 minutes. */
 function isOnline(pl, now = Date.now()) {
     if (pl.me)
-        return activePlayable();
+        return loggedIn();
     const o = sharedCache().players.find(x => x && x.uid === pl.id.uid);
     return !!(o && o.inuse && o.inuse.pc && now - (+o.inuse.at || 0) < IN_USE_MS);
 }
+/** When a player was last on (5.1): their last heartbeat in the shared folder, or else their last save. 0 = never seen. */
+function lastSeen(pl, now = Date.now()) {
+    if (isOnline(pl, now))
+        return now;
+    const o = sharedCache().players.find(x => x && x.uid === pl.id.uid);
+    return Math.max((o && o.inuse && +o.inuse.at) || 0, +pl.updated || 0, (o && +o.updated) || 0);
+}
+/** "just now", "30m ago", "4h ago", "3d ago", or a date for anything older than two weeks. */
+function agoShort(t, now = Date.now()) {
+    if (!t)
+        return '';
+    const s = Math.max(0, Math.round((now - t) / 1000));
+    return s < 60 ? 'just now' : s < 3600 ? Math.floor(s / 60) + 'm ago' : s < 86400 ? Math.floor(s / 3600) + 'h ago' : s < 14 * 86400 ? Math.floor(s / 86400) + 'd ago'
+        : new Date(t).toLocaleDateString();
+}
+/** Players for the home page: you first, then everyone online, then the rest by who was on most recently. */
+function sortPlayers(players, now = Date.now()) {
+    return players.map(p => ({ p, on: isOnline(p, now), seen: lastSeen(p, now) }))
+        .sort((a, b) => (+b.p.me - +a.p.me) || (+b.on - +a.on) || (b.seen - a.seen) || String(a.p.id.name).localeCompare(b.p.id.name)).map(x => x.p);
+}
+/* ---------- Game history (5.1): the newest 30 games, saved with the profile ---------- */
+const HISTORY_MAX = 30;
+/** One finished game, as the history keeps it. `rank` = the place this run holds on its stage board (0 = none). */
+function historyEntry(g, rank = 0, at = Date.now()) {
+    return { id: at.toString(36) + Math.random().toString(36).slice(2, 6), at, map: g.map.id, diff: g.diffKey, mode: g.mode, daily: !!g.daily,
+        wb: g.wb ? g.wb.boss.id : '', won: !!g.won, round: g.round, lives: Math.max(0, g.lives), pops: g.pops || 0, clock: Math.round(g.clock || 0),
+        wbTime: g.wb ? Math.round(g.wb.t || 0) : 0, score: g.wb && typeof wbScore === 'function' ? wbScore(g) : 0, rank: rank || 0 };
+}
+function historyList() { const h = store.get('history', []); return Array.isArray(h) ? h : []; }
+function addHistory(e) { store.set('history', [e, ...historyList().filter(x => x && x.id !== e.id)].slice(0, HISTORY_MAX)); }
 /* ---------- Notifications (5.0): the newest 10, saved with the profile ---------- */
 function notesList() { const n = store.get('notes', []); return Array.isArray(n) ? n : []; }
 /** Adds one. `id` stops the same event being added twice (another PC, the next start-up...). Returns true when added. */
@@ -423,12 +613,31 @@ function shareFileData(pl, slot?, active?) {
     return { v: 2, uid: pl.id.uid, id: pl.id, profile: pl.profile, runs: pl.runs, towers, records: pl.records, daily: pl.daily, dailyRuns: pl.dailyRuns || {}, wbHist: pl.wbHist || {},
         updated: pl.updated || Date.now(), pc: thisPcId(), owner: isPcOwner(pl.id.uid) ? thisPcId() : '', inuse: active ? { pc: thisPcId(), at: Date.now() } : null, save };
 }
-/** A deleted profile leaves this small file behind, so PCs that copied it remove their copy instead of bringing it back. */
-function deletedFileData(uid) { return { v: 2, uid, deleted: true, at: Date.now() }; }
+/** A deleted profile leaves this small file behind, so PCs that copied it remove their copy instead of bringing it back.
+    It keeps the name and look (so master control can list it), and `by: 'admin'` when master control deleted it. */
+function deletedFileData(uid, id?, by?) {
+    const look = id ? { name: id.name, tag: id.tag, animal: id.animal, style: id.style, bg: id.bg, border: id.border } : null;
+    return { v: 2, uid, deleted: true, at: Date.now(), by: by || '', look };
+}
+/** A player file written from a save (master control brings a deleted profile back from its backups). */
+function fileFromSave(save, now = Date.now()) {
+    const s = JSON.parse(JSON.stringify(save));
+    delete s.run;
+    s.updated = Math.max(now, +s.updated || 0);
+    const towers = {};
+    for (const [t, v] of Object.entries(s.towers || {}))
+        towers[t] = { total: (v && (v as any).total) || 0 };
+    return { v: 2, uid: s.id.uid, id: s.id, profile: s.profile || {}, runs: s.runs || {}, towers, records: s.records || {}, daily: s.daily || {}, dailyRuns: s.dailyRuns || {},
+        wbHist: s.wbHist || {}, updated: s.updated, pc: '', owner: '', inuse: null, save: s };
+}
 /** Checks a player file read from the shared folder; returns null when it isn't one. */
 function cleanShared(o) {
-    if (o && o.deleted === true && typeof o.uid === 'string' && /^[a-z0-9]{6,20}$/.test(o.uid))
-        return { uid: o.uid, deleted: true, at: +o.at || 0 };
+    if (o && o.deleted === true && typeof o.uid === 'string' && /^[a-z0-9]{6,20}$/.test(o.uid)) {
+        const l = o.look && typeof o.look === 'object' ? o.look : null;
+        const look = l && !nameProblem(l.name) ? { name: String(l.name), tag: String(l.tag || '').slice(0, 8), animal: String(l.animal || 'fox').slice(0, 20), style: l.style === 'f' ? 'f' : 'm',
+            bg: String(l.bg || 'sky').slice(0, 20), border: String(l.border || 'plain').slice(0, 20) } : null;
+        return { uid: o.uid, deleted: true, at: +o.at || 0, by: o.by === 'admin' ? 'admin' : '', look };
+    }
     if (!o || typeof o !== 'object' || !o.id || typeof o.uid !== 'string' || !/^[a-z0-9]{6,20}$/.test(o.uid) || nameProblem(o.id.name) || !/^[0-9]{4}$/.test(String(o.id.tag)))
         return null;
     const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
@@ -443,7 +652,7 @@ function allPlayers() {
     const local = localPlayers(), uids = new Set(local.map(p => p.id.uid));
     const remote = sharedCache().players.filter(o => o && o.uid && !o.deleted && o.id && !uids.has(o.uid)).map(o => ({ key: 'shared:' + o.uid, id: o.id, me: false, remote: true,
         updated: o.updated, profile: Object.assign({}, PROFILE_DEFAULT, o.profile || {}), runs: o.runs || {}, towers: o.towers || {}, records: o.records || {}, daily: o.daily || {},
-        dailyRuns: o.dailyRuns || {}, wbHist: o.wbHist || {} }));
+        dailyRuns: o.dailyRuns || {}, wbHist: o.wbHist || {}, history: o.save && Array.isArray(o.save.history) ? o.save.history : [] }));
     return local.concat(remote);
 }
 function playerByKey(key) { return allPlayers().find(p => p.key === key) || null; }
@@ -517,6 +726,39 @@ function deleteActiveProfile() {
     pc.owner = '';
     savePcInfo(pc);
     return uid;
+}
+/** Master control deleted a profile (5.1): every save slot of it on this PC goes, even the active one (the page must
+    then reload; nothing is saved to the old slot in the meantime). Returns { removed, wasActive }. */
+function dropProfileHere(uid) {
+    const r = roster(), keys = r.keys.filter(k => (readSlot(k).id || {}).uid === uid);
+    const wasActive = keys.includes(r.active);
+    if (!keys.length)
+        return { removed: 0, wasActive: false };
+    r.keys = r.keys.filter(k => !keys.includes(k));
+    for (const k of keys)
+        try {
+            localStorage.removeItem(k);
+        }
+        catch (e) { }
+    if (!r.keys.length)
+        r.keys = [STORE_KEY];
+    if (wasActive) {
+        r.active = r.keys.find(k => homeHere(readSlot(k).id)) || r.keys[0];
+        if (!readSlot(r.active).id)
+            try {
+                localStorage.setItem(r.active, JSON.stringify({ settings: SETTINGS }));
+            }
+            catch (e) { }
+        if (keys.includes(ACTIVE_KEY))
+            SAVES_OFF = true;
+    }
+    saveRoster(r);
+    const pc = pcInfo();
+    if (pc.owner === uid) {
+        pc.owner = '';
+        savePcInfo(pc);
+    }
+    return { removed: keys.length, wasActive };
 }
 /* ---------- Leaderboards (all players on this PC and the shared folder) ----------
    Tier and stage boards show the top 3 with gold, silver and bronze. The Global board ranks everyone by medal

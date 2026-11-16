@@ -1,7 +1,7 @@
 "use strict";
 /* Balloon Defense — game data: maps, modes, difficulties, balloons, towers, rounds, titles, avatars.
    Edit these tables to rebalance the game; no other file needs to change. */
-const VERSION = '5.0.0';
+const VERSION = '5.1.0';
 const W = 960, H = 600, TAU = Math.PI * 2;
 /* ---------- Tile grid (40 x 25 tiles of 24 px) ---------- */
 const TILE = 24, COLS = W / TILE, ROWS = H / TILE;
@@ -139,7 +139,15 @@ const MINE_PERKS = [
     { id: 'cost', name: 'Discount', per: '−2% cost', max: 5 },
     { id: 'cd', name: 'Payday recharge', per: '+5% ability recharge', max: 4 }
 ];
-function perkList(type) { return type === 'mine' ? MINE_PERKS : PERKS; }
+/** The Sniper Post already sees the whole map and hits one balloon at a time, so range and pierce did nothing for it (5.1). */
+const SNIPER_PERKS = [
+    { id: 'dmg', name: 'Damage', per: '+5% damage', max: 5 },
+    { id: 'rate', name: 'Attack speed', per: '+2% attack speed', max: 5 },
+    { id: 'cost', name: 'Discount', per: '−2% cost', max: 5 },
+    { id: 'blimp', name: 'Blimp hunter', per: '+10% damage to blimps', max: 3 },
+    { id: 'cd', name: 'Ability recharge', per: '+5% ability recharge', max: 4 }
+];
+function perkList(type) { return type === 'mine' ? MINE_PERKS : type === 'sniper' ? SNIPER_PERKS : PERKS; }
 /* ---------- Titles (lifetime balloons popped) ---------- */
 const TITLES = [
     { id: 'rookie', name: 'Rookie', pops: 0 },
@@ -487,6 +495,19 @@ const SHOP = ['dart', 'tack', 'bomb', 'sniper', 'frost', 'signal', 'tesla', 'boa
 const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 /** Release notes, newest first (the News panel on the home page). */
 const NEWS = [
+    { v: '5.1', date: '2026-11-16', items: [
+            'Log in: the game opens on a sign-in page and nothing else shows until you log in. Find your profile (search by name), then type your password. A profile without a password makes one at its first log-in. New players sign up with the registration form (live name check, password strength, show/hide password).',
+            'The World Boss news opens every time you log in.',
+            'Master control: reset a password, delete an account, or bring a deleted account back from its backups.',
+            'Sniper Post skills: Range and Pierce did nothing for it, so they are now Damage (+5% per point) and Blimp hunter (+10% damage to blimps per point). Points you had in them are given back.',
+            'No daily challenge on Saturdays and Sundays. Weekends don\'t break your daily streak.',
+            'Players: online players are listed first, a pop-up tells you when someone comes online, and offline players show when they were last on (for example 30m ago or 4h ago).',
+            'The game clock is shown next to the round. It stops while the game is paused and runs 3 times as fast on 3x.',
+            'Chat shows your own name, avatar, rank and title on your messages too.',
+            'Game history: your last 30 games, on your profile.',
+            'Notifications show a trophy for wins, medals and the crown, and you get one when you take a top 3 place on a stage board.',
+            'The screen flashes red when balloons get through.'
+        ] },
     { v: '5.0', date: '2026-11-13', items: [
             'World Boss: a new boss every week on one of 4 new looping maps. It has 50,000 HP and keeps summoning balloons that get stronger every minute. Your score is the damage you deal.',
             'The World Boss banner and its damage board are at the bottom of the leaderboards. Each event ends on Friday at 5:00 PM (Philippine time). The top damage dealer wears the World Boss Legend border for a week.',

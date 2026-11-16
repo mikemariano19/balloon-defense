@@ -1,11 +1,11 @@
 {
   "name": "balloon-defense",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "private": true,
   "description": "Balloon Defense: an offline browser tower defense game.",
   "scripts": {
     "build": "tsc -p .",
-    "test": "node --test tests/engine.test.js tests/share.test.js tests/v45.test.js tests/v50.test.js",
+    "test": "node --test tests/engine.test.js tests/share.test.js tests/v45.test.js tests/v50.test.js tests/v51.test.js",
     "balance": "node tools/balance.js"
   },
   "devDependencies": {

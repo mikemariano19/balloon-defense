@@ -183,12 +183,19 @@ const Share = {
                 catch (e) { }
             for (const key of plan.removes)
                 removePlayer(key);
+            if (plan.kick) { // master control deleted the active profile: it goes from this PC too (5.1)
+                dropProfileHere(plan.kick);
+                setSession('');
+                this.kicked = true;
+                this.reload = true;
+            }
             if (plan.reload)
                 this.reload = true;
             for (const x of localPlayers())
                 if (plan.writes.includes(x.id.uid))
-                    await writeText(dir, 'p-' + x.id.uid + '.json', JSON.stringify(shareFileData(x, readSlot(x.key), x.me && !this.reload && activePlayable())));
+                    await writeText(dir, 'p-' + x.id.uid + '.json', JSON.stringify(shareFileData(x, readSlot(x.key), x.me && !this.reload && loggedIn())));
             saveSharedCache([...found.values()]);
+            await this.readAdmin(root);
             await this.readEvents(root);
             this.state = 'on';
             this.error = '';
@@ -203,15 +210,70 @@ const Share = {
         }
         notifyShare();
     },
+    /** Set when master control deleted the active profile from another PC: the page reloads to the log-in screen. */
+    kicked: false,
     /** A deleted profile: its file becomes a small "deleted" marker, so PCs that copied it drop their copy too. */
-    async tombstone(uid) {
+    async tombstone(uid, id?, by?) {
         if (!this.connected() || !uid)
-            return;
+            return false;
         try {
             const dir = await this.handle.getDirectoryHandle(SHARE_DIR, { create: true });
-            await writeText(dir, 'p-' + uid + '.json', JSON.stringify(deletedFileData(uid)));
+            await writeText(dir, 'p-' + uid + '.json', JSON.stringify(deletedFileData(uid, id, by)));
+            const list = sharedCache().players.filter(o => o && o.uid !== uid);
+            list.push(cleanShared(deletedFileData(uid, id, by)));
+            saveSharedCache(list);
+            return true;
+        }
+        catch (e) {
+            return false;
+        }
+    },
+    /* ----- Master control (5.1): the master password and password resets, shared by every PC ----- */
+    /** Reads <folder>/balloon-defense-admin/admin.json, merges it with this browser's copy, and writes back what the folder lacks. */
+    async readAdmin(root = this.handle) {
+        if (!root)
+            return;
+        try {
+            const dir = await root.getDirectoryHandle(ADMIN_DIR, { create: true });
+            let theirs = null;
+            try {
+                const f = await (await dir.getFileHandle(ADMIN_FILE)).getFile();
+                if (f.size < 2e5)
+                    theirs = JSON.parse(await f.text());
+            }
+            catch (e) { }
+            const mine = adminData(), all = mergeAdmin(mine, theirs);
+            saveAdminData(all);
+            if (stableJSON(all) !== stableJSON(cleanAdmin(theirs)))
+                await writeText(dir, ADMIN_FILE, JSON.stringify(Object.assign({ v: 1 }, all)));
         }
         catch (e) { }
+    },
+    /** Saves a change to the master control data here and (when connected) in the shared folder. */
+    async saveAdmin(next) {
+        saveAdminData(mergeAdmin(adminData(), next));
+        if (this.connected())
+            await this.readAdmin();
+    },
+    /** Master control: brings a deleted profile back from every copy still around (its backups in the folder and in
+        this browser). Its player file is written again, so it shows on every PC and its owner can log in. */
+    async restoreAccount(uid) {
+        if (!this.connected())
+            return 'Connect the shared folder first';
+        const data = mergeAll(await this.copiesOf(uid));
+        if (!data || !data.id || !data.id.name)
+            return 'No backup of this profile was found';
+        if (nameTaken(data.id.name, uid))
+            return 'Another player uses the name ' + data.id.name + ' now';
+        try {
+            const dir = await this.handle.getDirectoryHandle(SHARE_DIR, { create: true }), file = fileFromSave(data);
+            await writeText(dir, 'p-' + uid + '.json', JSON.stringify(file));
+            saveSharedCache(sharedCache().players.filter(o => o && o.uid !== uid).concat([cleanShared(file)]));
+        }
+        catch (e) {
+            return 'Couldn\'t write to the shared folder';
+        }
+        return '';
     },
     /* ----- Game results from other PCs (notifications) -----
        Each finished game is one small file in <folder>/balloon-defense-events/. Other PCs show the ones from the last
@@ -476,6 +538,7 @@ const Share = {
 };
 const EVENT_DIR = 'balloon-defense-events', EVENT_FILE = /^e-(\d{12,14})-[a-z0-9]{6,20}\.json$/, EVENT_FRESH_MS = 600000;
 const BACKUP_DIR = 'balloon-defense-backups', BACKUP_FILE = /^b-(\d{12,14})\.json$/, BACKUP_KEEP = 5;
+const ADMIN_DIR = 'balloon-defense-admin', ADMIN_FILE = 'admin.json';
 const SEEN_KEY = 'balloonDefense.eventsSeen';
 function eventsSeen(now = Date.now()) { try {
     const v = +localStorage.getItem(SEEN_KEY);
@@ -507,12 +570,14 @@ function cleanEvent(o) {
     - a "deleted" marker removes this PC's copy (never the active player's)
     - a file is (re)written when it misses anything this PC's copy has, has no save inside (v4.0), or is the active player's (heartbeat) */
 function planSync(locals, found, myPc, canReload) {
-    const plan = { merges: [], removes: [], writes: [], reload: false };
+    const plan = { merges: [], removes: [], writes: [], reload: false, kick: '' };
     for (const x of locals) {
         const r = found.get(x.uid), mine = x.slot || {};
         if (r && r.deleted) {
             if (!x.me)
                 plan.removes.push(x.key);
+            else if (r.by === 'admin')
+                plan.kick = x.uid; // master control deleted the profile playing here (5.1)
             continue;
         }
         if (!r || !r.save) {

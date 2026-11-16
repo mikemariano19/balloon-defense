@@ -92,8 +92,8 @@ const Chat = {
     /** Sends a text message ({ text }). Returns '' when sent, or why it wasn't. */
     async send(body, now = Date.now()) {
         const id = getId();
-        if (!id || !activePlayable())
-            return 'Create your profile first';
+        if (!id || !loggedIn())
+            return 'Log in first';
         if (!Share.connected())
             return 'Connect the shared folder in Settings to chat';
         const why = chatProblem(body.text);

@@ -1,6 +1,19 @@
-# Balloon Defense 5.0
+# Balloon Defense 5.1
 
 An offline browser tower defense game. No install: double-click `index.html`.
+
+What's new in 5.1:
+- **Log in** (`openLogin`, `src/ui.ts`): every visit starts by picking a profile and typing its password. Passwords are
+  stored as salted SHA-256 hashes in `id.pw` (`src/profile.ts`), never in plain text. A profile without one creates it at
+  its first log-in. The log-in lasts for the browser tab (`sessionStorage`); `loggedIn()` gates playing, chat and the
+  online dot. New players use the registration form (one profile per PC, as before).
+- **Master control** (link on the log-in screen): reset a password, delete an account everywhere, or restore a deleted
+  account from its backups. The master password is set the first time it is opened and kept, hashed, in
+  `<folder>/balloon-defense-admin/admin.json`. Forgot it? Delete that file.
+- World Boss news on every log-in · game history (last 30 games, on the profile) · trophies in notifications · red screen
+  flash on leaks · HUD game clock (stops on pause, 3x on 3x) · players sorted online first, with "30m ago" last-seen ·
+  online pop-ups · your own name, avatar, level/rank and title in chat · no daily challenge on weekends (streaks skip
+  them) · Sniper Post skills: Damage and Blimp hunter replace Range and Pierce.
 
 What's new in 5.0 (the News button on the home page lists every version):
 - **Profile protection.** A profile plays only on its home PC (`id.home`); other PCs show it view-only. Saves never go

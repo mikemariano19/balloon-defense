@@ -22,7 +22,7 @@ function toast(msg, kind, ms = 2600) {
         box.firstChild.remove();
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, ms);
 }
-function onLeak(_n) {
+function onLeak(n) {
     const b = $('sLivesBox');
     b.classList.remove('hit');
     void b.offsetWidth;
@@ -31,6 +31,14 @@ function onLeak(_n) {
     v.classList.add('on');
     clearTimeout(onLeak.t);
     onLeak.t = setTimeout(() => v.classList.remove('on'), 220);
+    // 5.1: the whole screen flashes red; bigger leaks flash stronger
+    const f = $('dmgFlash');
+    if (f) {
+        f.style.setProperty('--dmg', String(Math.min(1, 0.45 + 0.08 * Math.max(1, +n || 1))));
+        f.classList.remove('on');
+        void f.offsetWidth;
+        f.classList.add('on');
+    }
 }
 function onBoss(_b) { }
 function onLevelUp(lv, before) {
@@ -48,13 +56,26 @@ function txpLine() {
     const free = game.won && game.round > game.diff.end ? `<p class="muted" style="text-align:center;font-size:12.5px">Freeplay: no tower XP after round ${game.diff.end}.</p>` : '';
     return (k.length ? `<div class="xpgain"><b>Tower XP</b>${k.map(t => `<span>${TD[t].name} <em>+${x[t].toLocaleString()}</em></span>`).join('')}</div>` : '') + free;
 }
-/** When a game ends (won, or lost): the daily result, the notification for other PCs, and an automatic backup. Once per game. */
-function afterGameEnd() {
+/** When a game ends (won, or lost): the daily result, the game history, a trophy for a top 3 place, the notification
+    for other PCs, and an automatic backup. Once per game. `res` = submitRun's result (a ranked Standard run). */
+function afterGameEnd(res) {
     const g = game;
     if (!g || g.ended)
         return;
     g.ended = true;
     saveDailyRun(g);
+    let rank = 0;
+    if (res && res.run && !g.wb) {
+        const mine = stageRanking(g.map.id, g.diffKey, false).find(x => x.p.me);
+        rank = mine && res.best ? mine.rank : 0;
+        if (rank && rank <= 3) {
+            const d = DIFF[g.diffKey];
+            addNote({ id: 'trophy-' + g.map.id + '-' + g.diffKey + '-' + res.run.at, kind: 'trophy', av: avatarOf(getId()),
+                text: 'You took ' + MEDALS[rank - 1] + ' on ' + g.map.name + ' · ' + d.name + '!', sub: (res.run.cleared ? 'Cleared · ' + res.run.livesLost + ' lives lost' : 'Round ' + res.run.round) + ' · game clock ' + fmtClock(res.run.clock) });
+        }
+    }
+    if (g.round >= 1)
+        addHistory(historyEntry(g, rank));
     const id = getId();
     if (id && id.uid && !g.wb)
         Share.postEvent(gameEvent(g, id));
@@ -79,10 +100,9 @@ function onGameOver() {
     const res = submitRun();
     clearRun();
     saveProfile();
-    afterGameEnd();
-    const mins = Math.max(1, Math.round((Date.now() - game.startedAt) / 60000));
+    afterGameEnd(res);
     openModal('end', `<div style="text-align:center"><h2>Game Over</h2><p class="lead">The balloons broke through on round ${game.round}.</p></div>
-    <div class="bigstats"><div><b>${game.round}</b><span>Round reached</span></div><div><b>${game.pops.toLocaleString()}</b><span>Balloons popped</span></div><div><b>${mins} min</b><span>Played</span></div></div>
+    <div class="bigstats"><div><b>${game.round}</b><span>Round reached</span></div><div><b>${game.pops.toLocaleString()}</b><span>Balloons popped</span></div><div><b>${fmtClock(game.clock)}</b><span>Game time</span></div></div>
     ${runLine(res)}${txpLine()}
     <div class="row"><button class="btn" data-act="menu"><img class="icon" src="assets/ui/home.svg" alt="">Home</button><button class="btn primary big" data-act="retry"><img class="icon" src="assets/ui/restart.svg" alt="">Try again</button></div>`);
 }
@@ -103,8 +123,8 @@ function onWorldBossEnd(res) {
 }
 /** Starts this week's World Boss fight. */
 function startWorldBoss() {
-    if (!activePlayable())
-        return openCreateProfile();
+    if (!loggedIn())
+        return openLogin();
     if (!wbOpen()) {
         toast('The World Boss opens on Friday at 7:30 AM (PH time): ' + wbOpensTxt() + ' your time.', 'warn');
         return;
@@ -114,7 +134,7 @@ function startWorldBoss() {
 }
 function onVictory() {
     UI.paused = true;
-    afterGameEnd();
+    afterGameEnd(game.result);
     const d = game.diff, mode = game.mode !== 'standard';
     const reward = game.daily ? `<img class="medalbig" src="assets/ui/calendar.svg" alt=""><h2>Daily challenge complete!</h2>`
         : mode ? `<img class="medalbig" src="assets/ui/star.svg" alt=""><h2>Challenge complete!</h2>`
@@ -218,6 +238,11 @@ function refreshHUD(force) {
         $('sRound').textContent = g.round;
         $('sRoundOf').textContent = g.won ? ' freeplay' : '/' + g.diff.end;
     }
+    // 5.1: the game clock. It is simulated time, so it stops while paused and runs 2x / 3x as fast on fast forward.
+    $('sClockBox').classList.toggle('hide', !!g.wb);
+    $('sClock').textContent = fmtClock(g.clock);
+    $('sClockBox').classList.toggle('fast', !UI.paused && g.inRound && UI.speed > 1);
+    $('sClockBox').classList.toggle('stopped', !!(UI.paused || UI.modal));
     $('gSound').querySelector('img').src = 'assets/ui/' + (SETTINGS.sound ? 'sound-on' : 'sound-off') + '.svg';
     const rb = $('roundBtn');
     if (!g.inRound) {
@@ -770,7 +795,7 @@ $('mHelp').addEventListener('click', openHelp);
 $('mSettings').addEventListener('click', () => openSettings());
 $('mStats').addEventListener('click', () => openProfileCard());
 $('profChip').addEventListener('click', () => openProfileCard());
-$('mUpgrades').addEventListener('click', () => openTree(UI.treeType, 'menu'));
+$('mUpgrades').addEventListener('click', () => loggedIn() ? openTree(UI.treeType, 'menu') : openLogin());
 /* Boss key: ` hides the game behind a plain blank screen and pauses it. */
 function toggleBossKey() {
     UI.bossKey = !UI.bossKey;
@@ -794,6 +819,8 @@ document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && UI.modal) {
         if (UI.modal === 'pause')
             resume();
+        else if (UI.modal === 'wbnews')
+            closeWbNews();
         else if (!modalLocked())
             closeModalAndResume();
         return;
@@ -890,7 +917,13 @@ function openModal(name, html, cls) {
     $('modal').classList.add('on');
     return c;
 }
-function closeModal() { UI.modal = null; $('modal').classList.remove('on'); }
+function closeModal() {
+    UI.modal = null;
+    $('modal').classList.remove('on');
+    // logged out: nothing of the game shows, so closing anything goes back to the sign-in page
+    if (document.body.classList.contains('locked') && !loggedIn())
+        openLogin(UI.loginNote);
+}
 function closeModalAndResume() {
     const wasGame = inGame();
     closeModal();
@@ -898,8 +931,12 @@ function closeModalAndResume() {
         UI.paused = false;
 }
 function startNew(cfg) {
-    if (!hasProfile())
-        return openCreateProfile(); // looking at the boards is fine without a profile; playing needs one
+    if (!loggedIn())
+        return openLogin(); // looking at the boards is fine without logging in; playing needs it
+    if (cfg.daily && dailyOff(cfg.daily)) {
+        toast('There is no daily challenge on Saturdays and Sundays', 'warn');
+        return;
+    }
     const run = savedRun();
     if (run)
         abandonRun(run);
@@ -910,6 +947,8 @@ $('modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') {
         if (UI.modal === 'wbchamp')
             closeWbChamp();
+        else if (UI.modal === 'wbnews')
+            closeWbNews();
         else if (UI.modal === 'pause')
             resume();
         else if (!modalLocked())
@@ -1126,7 +1165,11 @@ function doRestore(text) {
         $('bkMsg').textContent = r.error;
         return;
     }
-    const who = r.data.id ? r.data.id.name + '#' + r.data.id.tag : 'this backup';
+    const who = r.data.id ? r.data.id.name + '#' + r.data.id.tag : 'this backup', cur = getId();
+    if (!loggedIn() && cur && cur.name && (!r.data.id || r.data.id.uid !== cur.uid)) {
+        $('bkMsg').textContent = 'This PC\'s profile is ' + cur.name + '. Log in as ' + cur.name + ' first to replace it with another profile.';
+        return;
+    }
     if (!confirm('Replace all progress in this browser with ' + who + '?'))
         return;
     Share.autoBackup().catch(() => false).then(() => { restoreBackup(r.data); location.reload(); });
@@ -1224,70 +1267,426 @@ function pickerHTML(d) {
     <div class="pickrow"><span>Background</span><div class="picks">${AVATAR_BGS.map(b => opt('bg', b.id, `<i class="swatch" style="background:linear-gradient(${b.a},${b.b})"></i>`, d.bg === b.id, false, b.name)).join('')}</div></div>
     <div class="pickrow"><span>Border</span><div class="picks">${BORDERS.filter(b => !b.special).map(b => { const u = borderUnlocked(b); return opt('border', b.id, avatarSVG({ animal: d.animal, style: d.style, bg: d.bg, border: b.id }, 36) + (u ? '' : '<img class="plock" src="assets/ui/lock.svg" alt="">'), d.border === b.id, !u, b.name + (u ? '' : ' — ' + b.how)); }).join('')}</div></div>`;
 }
+/** The registration picker: animal, style, background and the free borders (a new player has earned no others yet). */
+function regPickerHTML(d) {
+    const opt = (k, v, inner, on, title) => `<button type="button" class="pick${on ? ' on' : ''}" data-act="pick" data-k="${k}" data-v="${v}" title="${esc(title)}">${inner}</button>`;
+    return `<div class="pickrow"><span>Animal</span><div class="picks animals">${ANIMALS.map(a => opt('animal', a.id, avatarSVG({ animal: a.id, style: d.style, bg: d.bg, border: 'plain' }, 40), d.animal === a.id, a.name)).join('')}</div></div>
+    <div class="pickrow"><span>Style</span><div class="seg">${[['m', 'Male'], ['f', 'Female']].map(([v, n]) => `<button type="button" data-act="pick" data-k="style" data-v="${v}" class="${d.style === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+    <div class="pickrow"><span>Background</span><div class="picks">${AVATAR_BGS.map(b => opt('bg', b.id, `<i class="swatch" style="background:linear-gradient(${b.a},${b.b})"></i>`, d.bg === b.id, b.name)).join('')}</div></div>
+    <div class="pickrow"><span>Border</span><div class="picks">${BORDERS.filter(b => b.free).map(b => opt('border', b.id, avatarSVG({ animal: d.animal, style: d.style, bg: d.bg, border: b.id }, 32), d.border === b.id, b.name)).join('')}</div></div>`;
+}
 function refreshDraft() {
     const d = UI.draft, el = $('draftPick'), pv = $('draftPrev');
     if (el)
-        el.innerHTML = pickerHTML(d);
+        el.innerHTML = UI.modal === 'register' ? regPickerHTML(d) : pickerHTML(d);
     if (pv)
-        pv.innerHTML = avatarSVG(d, 110);
+        pv.innerHTML = avatarSVG(d, UI.modal === 'register' ? 120 : 110);
     if (UI.modal === 'editprofile') {
         const t = $('titleSel');
         if (t)
             t.value = d.title;
     }
 }
-/** Tabs at the top of the first-run screens: create a profile, or pick the one you already have. */
-function profileTabs(on) {
-    return `<div class="seg ptabs"><button data-act="tocreate" class="${on === 'create' ? 'on' : ''}">Create profile</button><button data-act="signin" class="${on === 'find' ? 'on' : ''}">Find my profile</button></div>`;
+/* ---------- Log in and registration (5.1) ----------
+   Nothing of the game shows until you log in: the home page stays hidden (body.locked) behind a full-screen sign-in page.
+   Log in: pick your profile (search by name), then type your password (a profile without one makes it now). A profile
+   from another PC moves here when you log in. New players use the registration form (one profile per PC). */
+/** Locks the app (home page hidden) while nobody is logged in on this tab. */
+function syncLock() { document.body.classList.toggle('locked', !loggedIn()); }
+const EYE = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" fill="currentColor"/></svg>';
+/** A password box with a show/hide button and a Caps Lock warning. */
+function pwField(id, label, o = {}) {
+    return `<div class="field"><label class="lbl" for="${id}">${label}</label><div class="pwbox"><input id="${id}" type="password" maxlength="40" autocomplete="${o.ac || 'new-password'}" placeholder="${esc(o.ph || '')}" spellcheck="false">
+      <button type="button" class="pweye" data-act="pweye" data-for="${id}" title="Show password" aria-label="Show password">${EYE}</button></div>
+      <div class="caps" id="${id}Caps">Caps Lock is on</div>${o.extra || ''}</div>`;
 }
-function profileFoot() {
-    if (hasProfile())
-        return '<span class="small muted"><button class="linkbtn" data-act="close">Cancel</button></span>';
-    return `<span class="small muted"><button class="linkbtn" data-act="browse">Look at the leaderboards first</button> · Played before? <button class="linkbtn" data-act="restorecode">Restore a backup code</button></span>`;
+function wirePw(id, enter) {
+    const el = $(id);
+    if (!el)
+        return;
+    const caps = (e) => {
+        const c = $(id + 'Caps');
+        if (c && e.getModifierState)
+            c.classList.toggle('on', e.getModifierState('CapsLock'));
+    };
+    el.addEventListener('keydown', (e) => {
+        caps(e);
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            enter();
+        }
+    });
+    el.addEventListener('keyup', caps);
 }
+/** Password strength 0–4 and its label (length, upper and lower case, digits, symbols). */
+function pwStrength(p) {
+    p = String(p || '');
+    if (!p)
+        return { n: 0, txt: '' };
+    let n = 0;
+    if (p.length >= 6)
+        n++;
+    if (p.length >= 10)
+        n++;
+    if (/[a-z]/.test(p) && /[A-Z]/.test(p))
+        n++;
+    if (/\d/.test(p) && /[^A-Za-z0-9]/.test(p))
+        n++;
+    else if (/\d/.test(p) || /[^A-Za-z0-9]/.test(p))
+        n += .5;
+    n = Math.max(1, Math.min(4, Math.round(n)));
+    return { n, txt: ['', 'Weak', 'Fair', 'Good', 'Strong'][n] };
+}
+function meterHTML(id) { return `<div class="pwmeter" id="${id}"><i></i><i></i><i></i><i></i><span></span></div>`; }
+function setMeter(id, pw) {
+    const m = $(id);
+    if (!m)
+        return;
+    const s = pwStrength(pw);
+    m.dataset.n = String(s.n);
+    m.querySelector('span').textContent = pw ? s.txt + (pwProblem(pw) ? ' · ' + pwProblem(pw).toLowerCase() : '') : 'At least 4 characters';
+}
+/** The page around both forms: the game's name and art on the left, the form on the right. */
+function authPage(tab, inner) {
+    const balloons = ['red', 'blue', 'green', 'yellow', 'pink', 'rainbow'].map((b, i) => `<img src="assets/balloons/${b}.svg" alt="" style="--i:${i}">`).join('');
+    return `<div class="auth">
+      <aside class="authside"><div class="authballoons">${balloons}</div>
+        <img class="authlogo" src="assets/ui/logo.svg" alt=""><div class="authtitle">Balloon Defense</div>
+        <p>Pop every balloon. Climb the leaderboards. Beat the World Boss every Friday.</p>
+        <span class="authver">Version ${esc(VERSION.replace(/\.0$/, ''))}</span></aside>
+      <section class="authmain">
+        <div class="seg ptabs"><button data-act="signin" class="${tab === 'login' ? 'on' : ''}">Log in</button><button data-act="tocreate" class="${tab === 'register' ? 'on' : ''}">Register</button></div>
+        ${inner}
+        <div class="authfoot"><button class="linkbtn" data-act="restorecode">Restore a backup code</button><span>·</span><button class="linkbtn" data-act="master">Master control</button></div>
+      </section></div>`;
+}
+function profileFoot() { return ''; }
+function profileTabs(on) { return ''; }
+/** The registration form: name, password (twice, with a strength meter) and avatar. Each PC registers one profile. */
 function openCreateProfile(keep) {
-    if (!canCreateProfile())
-        return openFindProfile();
+    if (loggedIn())
+        return openProfileCard();
+    syncLock();
+    const owner = !canCreateProfile() ? localPlayers().find(p => p.id.uid === pcInfo().owner) : null;
+    if (owner || hasProfile()) {
+        const o = owner || localPlayers().find(p => p.me);
+        openModal('register', authPage('register', `<h2>Register</h2>
+        <div class="authnote">${o ? avatarSVG(o.id, 56) : ''}<div><b>This PC already has its own profile${o ? ': ' + esc(o.id.name) : ''}.</b>
+          <span>Each PC registers one profile. If you already have a profile, log in with it: it moves to this PC.</span></div></div>
+        <button class="btn primary big wide" data-act="signin">Go to log in</button>`), 'authcard');
+        return;
+    }
     const typed = keep && $('nameIn') ? $('nameIn').value : '';
     if (!keep || !UI.draft)
-        UI.draft = { name: '', animal: ANIMALS[Math.floor(Math.random() * ANIMALS.length)].id, style: Math.random() < .5 ? 'm' : 'f', bg: 'sky', border: 'plain' };
+        UI.draft = { name: '', animal: ANIMALS[Math.floor(Math.random() * ANIMALS.length)].id, style: Math.random() < .5 ? 'm' : 'f', bg: AVATAR_BGS[Math.floor(Math.random() * 4)].id, border: 'plain' };
     const migrated = PROFILE.games > 0;
-    openModal('create', `<h2>Welcome to Balloon Defense</h2>${profileTabs('create')}<p class="lead">${migrated ? 'Your old progress is safe. ' : ''}Pick a name and an avatar. Names are unique: nobody else on this PC or in the shared folder can use yours. Played before? Use <b>Find my profile</b>.</p>
-    <div class="createtop"><div id="draftPrev"></div><div class="grow"><label class="lbl" for="nameIn">Player name</label>
-      <input id="nameIn" maxlength="16" autocomplete="off" spellcheck="false" placeholder="3–16 letters or numbers"><div class="err" id="nameErr"></div>
-      <p class="muted small">Your profile plays on this PC. Nothing else about you is stored: no email, no real name.</p></div></div>
-    <div id="draftPick"></div>
-    <div class="row" style="justify-content:space-between;align-items:center">${profileFoot()}<button class="btn primary big" data-act="create">Create profile</button></div>`, 'wide');
+    openModal('register', authPage('register', `<h2>Create your profile</h2>
+    <p class="authsub">${migrated ? 'Your old progress on this PC is safe and comes with you. ' : ''}It takes a few seconds. Nothing about you is stored: no email, no real name.</p>
+    <form class="regform" onsubmit="return false" autocomplete="off">
+      <div class="regtop"><div class="regprev"><div id="draftPrev"></div><b id="draftName">Your name</b><small>Rookie · Lv 1</small></div>
+      <div class="regfields">
+        <div class="field"><label class="lbl" for="nameIn">Player name</label><input id="nameIn" maxlength="16" autocomplete="off" spellcheck="false" placeholder="3–16 letters or numbers">
+          <div class="hint" id="nameHint">Letters, numbers, spaces, _ and -. Everyone sees this name.</div></div>
+        ${pwField('pwIn', 'Password', { ph: 'At least 4 characters', extra: meterHTML('pwMeter') })}
+        ${pwField('pw2In', 'Type the password again', { extra: '<div class="hint" id="pw2Hint"></div>' })}
+      </div></div>
+      <div class="regpick"><div class="regpickhead">Your avatar <span class="muted small">(you can change it later)</span></div><div id="draftPick"></div></div>
+    </form>
+    <div class="err" id="regErr"></div>
+    <button class="btn primary big wide" data-act="create">Create profile and play</button>
+    <p class="authalt">Already have a profile? <button class="linkbtn" data-act="signin">Log in</button></p>`), 'authcard');
     refreshDraft();
-    $('nameIn').value = typed;
-    setTimeout(() => $('nameIn') && $('nameIn').focus(), 30);
-    $('nameIn').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter')
-            finishCreate();
+    const nameIn = $('nameIn');
+    nameIn.value = typed;
+    const checkName = () => {
+        const v = nameIn.value, why = v.trim() ? (nameProblem(v) || (nameTaken(v) ? 'That name is taken. If it\'s yours, log in with it.' : '')) : '';
+        const h = $('nameHint');
+        h.className = 'hint' + (!v.trim() ? '' : why ? ' bad' : ' ok');
+        h.textContent = !v.trim() ? 'Letters, numbers, spaces, _ and -. Everyone sees this name.' : why || '✓ ' + v.trim() + ' is available';
+        $('draftName').textContent = v.trim() || 'Your name';
+        return !why && !!v.trim();
+    };
+    const checkPw = () => {
+        setMeter('pwMeter', $('pwIn').value);
+        const a = $('pwIn').value, b = $('pw2In').value, h = $('pw2Hint');
+        h.className = 'hint' + (!b ? '' : a === b ? ' ok' : ' bad');
+        h.textContent = !b ? '' : a === b ? '✓ The passwords match' : 'The passwords are not the same';
+    };
+    nameIn.addEventListener('input', checkName);
+    nameIn.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            $('pwIn').focus();
+        }
     });
+    $('pwIn').addEventListener('input', checkPw);
+    $('pw2In').addEventListener('input', checkPw);
+    wirePw('pwIn', () => $('pw2In').focus());
+    wirePw('pw2In', finishCreate);
+    if (typed)
+        checkName();
+    checkPw();
+    setTimeout(() => $('nameIn') && $('nameIn').focus(), 30);
 }
 function finishCreate() {
-    const name = $('nameIn').value, why = nameProblem(name);
+    const name = $('nameIn').value, pw = $('pwIn').value, pw2 = $('pw2In').value;
+    const why = nameProblem(name) || (nameTaken(name) ? 'That name is taken. If it\'s yours, log in with it.' : '') || pwProblem(pw, pw2);
     if (why) {
-        $('nameErr').textContent = why;
+        $('regErr').textContent = why;
+        shakeCard();
+        (nameProblem(name) || nameTaken(name) ? $('nameIn') : pwProblem(pw) ? $('pwIn') : $('pw2In')).focus();
         return;
     }
-    if (nameTaken(name)) {
-        $('nameErr').textContent = 'Name already taken. If it\'s yours, use "Find my profile".';
-        return;
-    }
-    if (!canCreateProfile()) {
-        openFindProfile();
+    if (!canCreateProfile() || hasProfile()) {
+        openCreateProfile();
         return;
     }
     UI.draft.name = name;
+    UI.draft.pw = pw;
     createProfile(UI.draft);
+    UI.draft.pw = '';
+    syncLock();
     closeModal();
     buildMenu();
     Share.syncSoon();
-    checkWbNotes();
     toast('Welcome, ' + name.trim() + '!', 'good');
-    maybeWhatsNew();
+    afterLogin();
+}
+function shakeCard() { const c = $('modalCard'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); }
+/** Everyone who can log in on this PC: its own profiles, the shared folder's and this browser's backups (not deleted ones). */
+async function loginCandidates() {
+    const seen = new Map(), cache = sharedCache().players, gone = new Set(cache.filter(o => o && o.deleted).map(o => o.uid));
+    for (const pl of localPlayers())
+        seen.set(pl.id.uid, { uid: pl.id.uid, id: pl.id, profile: pl.profile, at: pl.updated, key: pl.key, here: homeHere(pl.id), inuse: inUseElsewhere(pl.id.uid) });
+    for (const o of cache)
+        if (o && o.uid && !o.deleted && o.id && o.id.name) {
+            const c = seen.get(o.uid);
+            if (!c)
+                seen.set(o.uid, { uid: o.uid, id: o.id, profile: Object.assign({}, PROFILE_DEFAULT, o.profile || {}), at: +o.updated || 0, key: '', here: false, inuse: inUseElsewhere(o.uid) });
+            else if (!c.here)
+                c.at = Math.max(c.at || 0, +o.updated || 0);
+        }
+    for (const b of await Share.browserProfiles())
+        if (!seen.has(b.uid) && !gone.has(b.uid))
+            seen.set(b.uid, { uid: b.uid, id: b.data.id, profile: Object.assign({}, PROFILE_DEFAULT, b.data.profile || {}), at: b.at, key: '', here: false, inuse: false });
+    const now = Date.now();
+    return [...seen.values()].map(c => Object.assign(c, { on: !!c.inuse, seen: Math.max(+c.at || 0, ((cache.find(o => o && o.uid === c.uid) || {}).inuse || {}).at || 0) }))
+        .sort((a, b) => (+b.here - +a.here) || (+b.on - +a.on) || (b.seen - a.seen) || String(a.id.name).localeCompare(b.id.name))
+        .map(c => Object.assign(c, { seenTxt: c.on ? 'Playing now' : c.seen ? agoShort(c.seen, now) : '' }));
+}
+function openLogin(note) {
+    if (loggedIn())
+        return;
+    syncLock();
+    const conn = Share.connected() ? '' : Share.state === 'paused' ? '<div class="authwarn"><span>Reconnect the shared folder to see every player.</span><button class="btn small" data-act="share-resume">Reconnect</button></div>'
+        : Share.state === 'unsupported' ? '' : '<div class="authwarn"><span>Connect the shared folder to see players from other PCs.</span><button class="btn small" data-act="share-connect">Connect</button></div>';
+    const q = UI.loginQuery || '';
+    openModal('login', authPage('login', `<h2>Welcome back</h2>
+    <p class="authsub">Pick your profile, then type your password.</p>
+    ${note ? `<div class="authwarn">${note}</div>` : ''}${conn}
+    <div class="searchbox"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <input id="loginFind" placeholder="Find your name…" autocomplete="off" spellcheck="false" value="${esc(q)}"></div>
+    <div class="logingrid" id="loginGrid"><p class="muted">Looking for players…</p></div>
+    <p class="authalt">New here? <button class="linkbtn" data-act="tocreate">Create a profile</button></p>`), 'authcard');
+    const find = $('loginFind');
+    find.addEventListener('input', () => { UI.loginQuery = find.value; filterLogin(); });
+    find.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { // Enter picks the only (or first) match
+            const b = document.querySelector('#loginGrid .ltile:not(.hide)');
+            if (b)
+                b.click();
+        }
+    });
+    loginCandidates().then(list => {
+        const el = $('loginGrid');
+        if (!el || UI.modal !== 'login')
+            return;
+        UI.loginList = list;
+        el.innerHTML = list.length ? list.map(c => `<button class="ltile${c.here ? ' here' : ''}${c.on ? ' busy' : ''}" data-act="loginpick" data-uid="${esc(c.uid)}" data-name="${esc(String(c.id.name).toLowerCase())}" title="${c.on ? 'Being played on another PC right now' : 'Log in as ' + esc(c.id.name)}">
+          <span class="lav">${avatarSVG(Object.assign({}, c.id, { uid: c.uid }), 52)}<i class="sdot ${c.on ? 'on' : 'off'}"></i></span>
+          <span class="lname"><b>${esc(c.id.name)}</b><small>Lv ${levelOf(c.profile.xp)} · ${esc(c.seenTxt || 'Offline')}</small></span>
+          <span class="ltags">${c.here ? '<i class="tag here">This PC</i>' : ''}${hasPassword(bestId(c.uid) || c.id) ? '<i class="tag lock" title="Has a password">🔒</i>' : '<i class="tag new" title="Makes a password at log-in">New password</i>'}</span></button>`).join('')
+            + '<p class="muted small nomatch hide">No player with that name. <button class="linkbtn" data-act="tocreate">Create a profile</button></p>'
+            : '<div class="authempty"><b>No players yet</b><span>Be the first: create a profile.</span><button class="btn primary" data-act="tocreate">Create a profile</button></div>';
+        filterLogin();
+    });
+    setTimeout(() => $('loginFind') && $('loginFind').focus(), 30);
+}
+function filterLogin() {
+    const q = String(UI.loginQuery || '').trim().toLowerCase();
+    let n = 0;
+    document.querySelectorAll('#loginGrid .ltile').forEach(b => { const hit = !q || b.dataset.name.includes(q); b.classList.toggle('hide', !hit); n += +hit; });
+    const nm = document.querySelector('#loginGrid .nomatch');
+    if (nm)
+        nm.classList.toggle('hide', n > 0);
+}
+/** Step 2: the password for the picked profile (or a new one, when it has none). */
+function openLoginPw(uid) {
+    const c = (UI.loginList || []).find(x => x.uid === uid);
+    if (!c)
+        return openLogin();
+    if (c.inuse) {
+        toast('That profile is being played on another PC right now. Try again in a couple of minutes.', 'warn');
+        return;
+    }
+    const id = bestId(uid) || c.id, has = hasPassword(id), t = titleById(c.id.title);
+    UI.loginUid = uid;
+    openModal('loginpw', authPage('login', `<button class="backlink" data-act="signin">‹ All players</button>
+    <div class="loginwho">${avatarSVG(Object.assign({}, c.id, { uid }), 96)}<div><div class="pname">${esc(c.id.name)}<span>#${esc(c.id.tag)}</span></div>
+      <div class="ptitle">${esc((c.profile.pops || 0) >= t.pops ? t.name : TITLES[0].name)} · Lv ${levelOf(c.profile.xp)}</div>
+      <div class="muted small">${c.here ? 'Plays on this PC' : 'Moves to this PC when you log in'}</div></div></div>
+    <form onsubmit="return false" autocomplete="off">
+    ${has ? pwField('pwIn', 'Password', { ac: 'current-password' })
+        : `<div class="authwarn info"><span><b>Make a password.</b> This profile doesn't have one yet. You'll type it every time you log in.</span></div>
+      ${pwField('pwIn', 'New password', { ph: 'At least 4 characters', extra: meterHTML('pwMeter') })}${pwField('pw2In', 'Type it again', { extra: '<div class="hint" id="pw2Hint"></div>' })}`}
+    </form><div class="err" id="pwErr"></div>
+    <button class="btn primary big wide" data-act="logingo">${has ? 'Log in' : 'Save password and log in'}</button>
+    ${has ? '<p class="authalt">Forgot your password? Ask whoever runs <b>Master control</b> to reset it.</p>' : ''}`), 'authcard');
+    if (has)
+        wirePw('pwIn', loginGo);
+    else {
+        const chk = () => {
+            setMeter('pwMeter', $('pwIn').value);
+            const a = $('pwIn').value, b = $('pw2In').value, h = $('pw2Hint');
+            h.className = 'hint' + (!b ? '' : a === b ? ' ok' : ' bad');
+            h.textContent = !b ? '' : a === b ? '✓ The passwords match' : 'The passwords are not the same';
+        };
+        $('pwIn').addEventListener('input', chk);
+        $('pw2In').addEventListener('input', chk);
+        wirePw('pwIn', () => $('pw2In').focus());
+        wirePw('pw2In', loginGo);
+        chk();
+    }
+    setTimeout(() => $('pwIn') && $('pwIn').focus(), 30);
+}
+function loginGo() {
+    const uid = UI.loginUid, c = (UI.loginList || []).find(x => x.uid === uid);
+    if (!c)
+        return openLogin();
+    const id = bestId(uid) || c.id, has = hasPassword(id), pw = $('pwIn').value;
+    const fail = (msg) => { $('pwErr').textContent = msg; shakeCard(); $('pwIn').focus(); $('pwIn').select(); };
+    if (has && !pw)
+        return fail('Type your password');
+    if (has && !checkPassword(id, pw))
+        return fail('Wrong password. Try again.');
+    const why = has ? '' : pwProblem(pw, $('pw2In').value);
+    if (why)
+        return fail(why);
+    if (inUseElsewhere(uid))
+        return fail('That profile is being played on another PC right now. Try again in a couple of minutes.');
+    const newPw = has ? null : makePw(pw);
+    const btn = document.querySelector('[data-act=logingo]');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Logging in…';
+    }
+    doLogin(c, newPw);
+}
+/** Logs in: the profile becomes the active one on this PC (moving it here if it played on another PC). */
+function doLogin(c, newPw) {
+    const setPw = (key) => {
+        if (!newPw)
+            return;
+        const s = readSlot(key);
+        if (s.id) {
+            s.id.pw = newPw;
+            s.updated = Date.now();
+            try {
+                localStorage.setItem(key, JSON.stringify(s));
+            }
+            catch (e) { }
+        }
+    };
+    if (c.here && c.key) {
+        setPw(c.key);
+        setSession(c.uid);
+        if (c.key === ACTIVE_KEY) { // already loaded: no reload needed
+            if (newPw)
+                saveId(Object.assign(getId(), { pw: newPw }));
+            syncLock();
+            closeModal();
+            buildMenu();
+            Share.syncSoon();
+            afterLogin();
+            return;
+        }
+        switchPlayer(c.key);
+        markJustIn();
+        location.reload(); // the page loads that save slot
+        return;
+    }
+    const local = localPlayers().find(p => p.id.uid === c.uid);
+    Share.copiesOf(c.uid).then(copies => {
+        if (local)
+            copies.push(readSlot(local.key));
+        const key = moveProfileHere(copies);
+        if (!key) {
+            toast('That profile can\'t be moved here', 'bad');
+            openLogin();
+            return;
+        }
+        setPw(key);
+        setSession(c.uid);
+        markJustIn();
+        // the new home is written to the folder straight away, so the old PC learns it has moved
+        Share.pushActive().then(() => location.reload());
+    });
+}
+/** A log-in that reloads the page: the World Boss news still shows once it has loaded. */
+function markJustIn() {
+    try {
+        sessionStorage.setItem('balloonDefense.justIn', '1');
+    }
+    catch (e) { }
+}
+function takeJustIn() {
+    try {
+        const v = sessionStorage.getItem('balloonDefense.justIn');
+        sessionStorage.removeItem('balloonDefense.justIn');
+        return !!v;
+    }
+    catch (e) {
+        return false;
+    }
+}
+/** Right after logging in: the World Boss news (every log-in), then what's new in this version. */
+function afterLogin() {
+    checkWbNotes();
+    openWbNews();
+}
+function logout() {
+    if (game && !game.over)
+        snapshot();
+    saveProfile();
+    setSession('');
+    location.reload();
+}
+/** Change your password (from your profile card). */
+function openChangePw() {
+    const has = hasPassword(getId());
+    openModal('changepw', `<div class="cardhead"><h2>${has ? 'Change password' : 'Set a password'}</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
+    <form onsubmit="return false" autocomplete="off">
+    ${has ? '<label class="lbl" for="pwOld">Current password</label><input id="pwOld" type="password" maxlength="40" autocomplete="current-password" style="width:100%">' : ''}
+    <div class="pwpair"><div><label class="lbl" for="pwIn">New password</label><input id="pwIn" type="password" maxlength="40" autocomplete="new-password"></div>
+      <div><label class="lbl" for="pw2In">Type it again</label><input id="pw2In" type="password" maxlength="40" autocomplete="new-password"></div></div></form>
+    <div class="err" id="pwErr"></div>
+    <div class="row"><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="savepw">Save</button></div>`);
+}
+function saveNewPw() {
+    const id = getId(), has = hasPassword(id);
+    if (has && !checkPassword(id, $('pwOld').value)) {
+        $('pwErr').textContent = 'The current password is wrong';
+        return;
+    }
+    const why = pwProblem($('pwIn').value, $('pw2In').value);
+    if (why) {
+        $('pwErr').textContent = why;
+        return;
+    }
+    saveId(Object.assign(id, { pw: makePw($('pwIn').value) }));
+    Share.syncSoon();
+    toast('Password saved', 'good');
+    openProfileCard();
 }
 function openEditProfile() {
     const p = getId();
@@ -1441,7 +1840,7 @@ function badgeRow(map) {
 }
 function renderProfileChip() {
     const p = getId();
-    $('profChip').innerHTML = p ? `${avatarSVG(p, 44)}<span class="pc"><b>${esc(p.name)}<i>#${p.tag}</i></b><small>${currentTitle(p).name} · Lv ${playerLevel()}</small></span>` : '<span class="pc"><b>Create profile</b></span>';
+    $('profChip').innerHTML = p && loggedIn() ? `${avatarSVG(p, 44)}<span class="pc"><b>${esc(p.name)}<i>#${p.tag}</i></b><small>${currentTitle(p).name} · Lv ${playerLevel()}</small></span>` : '<span class="pc"><b>Log in</b></span>';
 }
 function showActToast(html) {
     const el = $('actToast');
@@ -1468,9 +1867,14 @@ function buildMenu() {
         $('contSub').textContent = `${DIFF[run.diffKey].name} · ${run.inRound ? 'in round ' + run.round : run.round ? 'round ' + run.round + ' done' : 'not started'} · ${run.lives} lives · ${money(run.cash)} · ${run.towers.length} towers`;
     }
     renderProfileChip();
-    const dc = dailyConfig(), dm = MAPS[dc.mapIdx], done = dailyDone();
-    $('daily').innerHTML = `<img src="assets/ui/calendar.svg" class="dicon" alt=""><div class="grow"><b>Daily challenge${done ? ' — complete ✓' : ''}</b>
-    <div class="muted">${esc(dm.name)} · ${DIFF[dc.diffKey].name} · ${MODES[dc.mode].name}${dailyStreak() ? ' · 🔥 ' + dailyStreak() + '-day streak' : ''}</div></div>
+    const dc = dailyConfig(), dm = MAPS[dc.mapIdx], done = dailyDone(), streak = dailyStreak();
+    $('daily').classList.toggle('off', dailyOff());
+    $('daily').innerHTML = dailyOff() // 5.1: no daily challenge on Saturdays and Sundays
+        ? `<img src="assets/ui/calendar.svg" class="dicon" alt=""><div class="grow"><b>No daily challenge today</b>
+    <div class="muted">There is no daily challenge on Saturdays and Sundays. The next one is on Monday${streak ? ' · 🔥 your ' + streak + '-day streak is safe' : ''}.</div></div>
+    <button class="btn" disabled>Back on Monday</button>`
+        : `<img src="assets/ui/calendar.svg" class="dicon" alt=""><div class="grow"><b>Daily challenge${done ? ' — complete ✓' : ''}</b>
+    <div class="muted">${esc(dm.name)} · ${DIFF[dc.diffKey].name} · ${MODES[dc.mode].name}${streak ? ' · 🔥 ' + streak + '-day streak' : ''}</div></div>
     <button class="btn ${done ? '' : 'primary'}" data-daily="1">${done ? 'Play again' : 'Play daily'}</button>`;
     renderBoards();
     $('tiers').innerHTML = TIERS.map(t => `<button class="tier${t.id === UI.tier ? ' on' : ''}" data-tier="${t.id}" style="--tc:${t.color}"><span class="dot" style="background:${t.color}"></span>${t.name}<small>${badgeCount(t.id)}/${MAPS.filter(m => m.tier === t.id).length * 4}</small></button>`).join('');
@@ -1500,7 +1904,7 @@ $('tiers').addEventListener('click', (e) => {
     }
 });
 $('daily').addEventListener('click', (e) => {
-    if (e.target.closest('[data-daily]'))
+    if (e.target.closest('[data-daily]') && !dailyOff())
         startNew(dailyConfig());
 });
 $('contGo').addEventListener('click', () => {
@@ -1527,7 +1931,7 @@ function openMapModal(i) {
 }
 /* ---------- Players on this PC: player list, leaderboards, profile cards ---------- */
 /** Modals the player can't click away: game results, and the first-run profile screens. */
-function modalLocked() { return UI.modal === 'end' || UI.modal === 'create' || (!hasProfile() && (UI.modal === 'restore' || UI.modal === 'find')); }
+function modalLocked() { return UI.modal === 'end' || (!loggedIn() && ['login', 'loginpw', 'register', 'restore'].includes(UI.modal)); }
 function runResult(r) { return r.cleared ? (r.livesLost ? r.livesLost + ' lost · ' : '★ ') + fmtClock(r.clock) : 'Round ' + r.round; }
 function titleOf(pl) { const t = titleById(pl.id.title); return pl.profile.pops >= t.pops ? t : TITLES[0]; }
 /** Rank badge: a medal for places 1–3, the number after that. */
@@ -1545,11 +1949,42 @@ function renderPlayers(players) {
     $('playersNote').textContent = players.length <= 1 ? (Share.connected() ? 'Only you so far: other PCs appear here once they connect to the same folder' : 'Only you so far')
         : here + ' on this PC' + (away ? ' · ' + away + ' from other PCs' : '') + ' · click one to see their profile';
     $('shareBox').innerHTML = shareButtonsHTML(false);
-    $('players').innerHTML = players.filter(pl => !pl.me || activePlayable()).map(pl => {
-        const on = isOnline(pl);
-        return `<button class="ptile${pl.me ? ' me' : ''}${pl.remote ? ' remote' : ''}" data-player="${esc(pl.key)}" title="Open ${esc(pl.id.name)}'s profile">
-      <i class="sdot ${on ? 'on' : 'off'}" title="${on ? 'Online' : 'Offline'}"></i>${pl.me ? '<i class="youbadge">You</i>' : ''}${avatarSVG(pl.id, 64)}<b>${esc(pl.id.name)}</b><small>Lv ${levelOf(pl.profile.xp)}</small><span class="ttl">${esc(titleOf(pl).name)}</span></button>`;
+    // 5.1: you first, then everyone online, then the others by who was on last ("30m ago", "4h ago")
+    const now = Date.now();
+    $('players').innerHTML = sortPlayers(players.filter(pl => !pl.me || loggedIn()), now).map(pl => {
+        const on = isOnline(pl, now), seen = on ? 'Online' : agoShort(lastSeen(pl, now), now);
+        return `<button class="ptile${pl.me ? ' me' : ''}${pl.remote ? ' remote' : ''}${on ? ' online' : ''}" data-player="${esc(pl.key)}" title="Open ${esc(pl.id.name)}'s profile">
+      <i class="sdot ${on ? 'on' : 'off'}" title="${on ? 'Online' : 'Offline'}"></i>${pl.me ? '<i class="youbadge">You</i>' : ''}${avatarSVG(pl.id, 64)}<b>${esc(pl.id.name)}</b><small>Lv ${levelOf(pl.profile.xp)}</small><span class="ttl">${esc(titleOf(pl).name)}</span>
+      <em class="seen${on ? ' on' : ''}" title="${on ? 'Online now' : 'Last online'}">${seen ? esc(seen) : 'Offline'}</em></button>`;
     }).join('') || '<p class="muted small">No players yet.</p>';
+    checkOnlineToasts(players, now);
+}
+/* 5.1: a pop-up when another player comes online. The first look after loading only remembers who is on. */
+function checkOnlineToasts(players, now = Date.now()) {
+    const on = new Set(players.filter(p => !p.me && isOnline(p, now)).map(p => p.id.uid));
+    if (UI.onlineSeen && loggedIn())
+        for (const p of players)
+            if (!p.me && on.has(p.id.uid) && !UI.onlineSeen.has(p.id.uid))
+                presenceToast(p);
+    UI.onlineSeen = on;
+}
+function presenceToast(pl) {
+    const box = $('chatToasts'), el = document.createElement('div');
+    el.className = 'ctoast presence';
+    el.innerHTML = `${avatarSVG(pl.id, 30)}<div class="grow"><b>${esc(pl.id.name)}</b><span><i class="sdot on"></i>is online now · Lv ${levelOf(pl.profile.xp)} ${esc(titleOf(pl).name)}</span></div><button class="x" title="Close" aria-label="Close">×</button>`;
+    box.prepend(el);
+    while (box.children.length > 4)
+        box.lastChild.remove();
+    let gone = false;
+    const bye = () => {
+        if (gone)
+            return;
+        gone = true;
+        el.classList.add('out');
+        setTimeout(() => el.remove(), 300);
+    };
+    el.querySelector('.x').addEventListener('click', bye);
+    setTimeout(bye, 5000);
 }
 /** ▲ moved up, ▼ moved down, – unchanged, NEW: since this board's order last changed on this PC. */
 function moveTag(d) {
@@ -1572,20 +2007,20 @@ function globalTable(players) {
 }
 /** Daily Challenge Top 10 for one day (today, or up to 6 days back): best performance first. */
 function dailyTable(players) {
-    const day = new Date();
-    day.setDate(day.getDate() + (UI.dailyDay || 0));
-    const date = todayStr(day), cfg = dailyConfig(date), m = MAPS[cfg.mapIdx];
+    // 5.1: weekdays only. UI.dailyDay is how many challenge days back (0 = today, or last Friday at the weekend).
+    const days = dailyDays(5), idx = Math.max(0, Math.min(days.length - 1, -(UI.dailyDay || 0)));
+    const date = days[idx], day = new Date(date + 'T12:00:00'), cfg = dailyConfig(date), m = MAPS[cfg.mapIdx], isToday = date === todayStr();
     const list = dailyBoard(date, players), mv = rankMoves('daily:' + date, list.map(x => ({ uid: x.p.id.uid, rank: x.rank }))), mine = list.find(x => x.p.me);
     const rows = list.slice(0, DAILY_SIZE).map(x => `<tr class="${x.p.me ? 'me' : ''}" data-player="${esc(x.p.key)}" title="Open ${esc(x.p.id.name)}'s profile">
       <td class="rk"><b>${x.rank}</b>${moveTag(mv[x.p.id.uid])}</td>${whoCell(x.p, esc(titleOf(x.p).name))}
       <td class="n">${x.run.won ? '<b class="okc">Won</b>' : 'Round ' + x.run.round}</td><td class="n">${x.run.lives}</td><td class="n tot">${fmtClock(x.run.clock)}</td></tr>`).join('');
-    const label = UI.dailyDay ? day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) : 'Today';
+    const label = isToday ? 'Today' : day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     return `<div class="mtable"><div class="mthead"><h3><img src="assets/ui/calendar.svg" alt="">Daily · Top ${DAILY_SIZE}</h3>
-      <span class="daynav"><button class="iconbtn sm" data-act="dailyday" data-d="-1" ${(UI.dailyDay || 0) <= -6 ? 'disabled' : ''} title="Day before">◀</button><b>${label}</b><button class="iconbtn sm" data-act="dailyday" data-d="1" ${(UI.dailyDay || 0) >= 0 ? 'disabled' : ''} title="Next day">▶</button></span></div>
+      <span class="daynav"><button class="iconbtn sm" data-act="dailyday" data-d="-1" ${idx >= days.length - 1 ? 'disabled' : ''} title="Day before">◀</button><b>${label}</b><button class="iconbtn sm" data-act="dailyday" data-d="1" ${idx <= 0 ? 'disabled' : ''} title="Next day">▶</button></span></div>
     <p class="muted small dsub">${esc(m.name)} · ${DIFF[cfg.diffKey].name} · ${MODES[cfg.mode].name}</p>
     <table><thead><tr><th></th><th class="l">Top ${DAILY_SIZE} players</th><th>Result</th><th>Lives</th><th>Time</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="5" class="empty muted small">Nobody has played this daily challenge yet.</td></tr>`}</tbody></table>
-    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${list.length}` : UI.dailyDay ? 'You didn\'t play this day' : 'Play today\'s daily challenge to rank'} · wins first, then most lives, then fastest</div></div>`;
+    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${list.length}` : !isToday ? 'You didn\'t play this day' : 'Play today\'s daily challenge to rank'} · wins first, then most lives, then fastest${dailyOff() ? ' · no daily challenge at the weekend' : ''}</div></div>`;
 }
 function renderBoards() {
     const ua = false, players = allPlayers();
@@ -1613,7 +2048,7 @@ $('boards').addEventListener('click', (e) => {
 $('topBoards').addEventListener('click', (e) => {
     const t = e.target, d = t.closest('[data-act=dailyday]'), r = t.closest('[data-player]');
     if (d) {
-        UI.dailyDay = Math.max(-6, Math.min(0, (UI.dailyDay || 0) + +d.dataset.d));
+        UI.dailyDay = Math.max(-4, Math.min(0, (UI.dailyDay || 0) + +d.dataset.d));
         renderBoards();
     }
     else if (r)
@@ -1635,30 +2070,51 @@ function openRestoreCode() {
     openModal('restore', `<h2>Restore a backup code</h2><p class="lead" style="margin-top:0">Paste the code from your Notepad backup (it starts with BD4-), or load a backup file.</p>
     <textarea id="restoreTxt" placeholder="BD4-…" spellcheck="false"></textarea>
     <div class="row left"><button class="btn" data-act="loadfile">Load backup file</button><span class="muted small" id="bkMsg"></span></div>
-    <div class="row">${hasProfile() ? '<button class="btn" data-act="close">Cancel</button>' : '<button class="btn" data-act="backcreate">Back</button>'}<button class="btn primary" data-act="restore">Restore</button></div>`);
+    <div class="row">${loggedIn() ? '<button class="btn" data-act="close">Cancel</button>' : '<button class="btn" data-act="backcreate">Back</button>'}<button class="btn primary" data-act="restore">Restore</button></div>`);
 }
 /** Modal buttons for the player screens. Returns true when handled. */
 function playerAction(a, b) {
     if (a === 'restorecode')
         openRestoreCode();
-    else if (a === 'backcreate')
-        openCreateProfile();
-    else if (a === 'signin')
-        openFindProfile();
+    else if (a === 'backcreate' || a === 'signin')
+        openLogin();
     else if (a === 'tocreate')
         openCreateProfile();
-    else if (a === 'findpick')
-        findPick(b);
+    else if (a === 'loginpick')
+        openLoginPw(b.dataset.uid);
+    else if (a === 'logingo')
+        loginGo();
+    else if (a === 'logout')
+        logout();
+    else if (a === 'changepw')
+        openChangePw();
+    else if (a === 'savepw')
+        saveNewPw();
+    else if (a === 'history')
+        openHistory(b.dataset.player);
+    else if (a === 'wbnews-close')
+        closeWbNews();
+    else if (a === 'wbnews-fight') {
+        closeModal();
+        startWorldBoss();
+    }
+    else if (a && a.startsWith('master'))
+        masterAction(a, b);
     else if (a === 'infotab')
         openHelp(b.dataset.t);
     else if (a === 'wbinfo')
         openHelp('wb');
     else if (a && a.startsWith('chat-'))
         chatAction(a, b);
-    else if (a === 'browse') {
-        UI.browsing = true;
-        closeModal();
-        buildMenu();
+    else if (a === 'pweye') { // show / hide a password
+        const inp = $(b.dataset.for);
+        if (inp) {
+            const show = inp.type === 'password';
+            inp.type = show ? 'text' : 'password';
+            b.classList.toggle('on', show);
+            b.title = show ? 'Hide password' : 'Show password';
+            inp.focus();
+        }
     }
     else if (a === 'removeplayer') {
         if (!b.dataset.armed) {
@@ -1679,9 +2135,11 @@ function playerAction(a, b) {
             b.textContent = 'Click again: delete this profile everywhere';
             return true;
         }
-        const uid = deleteActiveProfile();
-        if (uid)
-            Share.tombstone(uid).then(() => location.reload());
+        const look = getId(), uid = deleteActiveProfile();
+        if (uid) {
+            setSession('');
+            Share.tombstone(uid, look).then(() => location.reload());
+        }
     }
     else if (a === 'autobk-now') {
         b.disabled = true;
@@ -1692,7 +2150,7 @@ function playerAction(a, b) {
     else if (a === 'news')
         openNews();
     else if (a === 'dailyday') {
-        UI.dailyDay = Math.max(-6, Math.min(0, (UI.dailyDay || 0) + +b.dataset.d));
+        UI.dailyDay = Math.max(-4, Math.min(0, (UI.dailyDay || 0) + +b.dataset.d));
         renderBoards();
     }
     else if (a === 'player')
@@ -1784,9 +2242,15 @@ function onShareChange() {
         location.reload(); // this profile was played on another PC since: load that progress
         return;
     }
+    if (Share.kicked && !(inGame() && game && !game.over)) { // master control deleted this profile (5.1)
+        Share.kicked = false;
+        showNote('This profile was deleted with Master control. You are logged out.', 'lost');
+        setTimeout(() => location.reload(), 3000);
+        return;
+    }
     if (hasProfile() && !activePlayable() && !(inGame() && game && !game.over)) {
-        // "Find my profile" moved this profile to another PC: this PC can't play it any more
-        toast(getId().name + ' was moved to another PC with Find my profile', 'warn', 6000);
+        // the profile logged in on another PC and moved there: this PC can't play it any more
+        showNote(getId().name + ' logged in on another PC and moved there.', 'lost');
         if (migrateHome())
             setTimeout(() => location.reload(), 2500);
         return;
@@ -1794,8 +2258,8 @@ function onShareChange() {
     if ($('menu').classList.contains('on')) {
         renderBoards();
         renderProtectBar();
-        if (UI.modal === 'find')
-            openFindProfile();
+        if (UI.modal === 'login')
+            openLogin();
     }
     if (UI.modal === 'settings' && $('shStatus')) {
         $('shStatus').innerHTML = shareStatusText();
@@ -1821,7 +2285,7 @@ function onPlayerEvent(ev) {
     addNote({ id: 'ev-' + ev.uid + '-' + ev.at, at: ev.at, kind: ev.won ? 'won' : 'lost', av: { uid: ev.uid, animal: ev.animal, style: ev.style, bg: ev.bg, border: ev.border },
         text: ev.name + ' ' + (ev.won ? 'won' : 'lost') + ' ' + what, sub: d.name + ' · round ' + ev.round + ' · ' + ev.lives + ' lives · ' + money(ev.cash) + ' · ' + ev.towers + ' towers' });
     if (inGame()) { // during a game: one line in the bottom bar, so nothing covers the map or the buttons
-        toast(`${ev.name} ${ev.won ? 'won' : 'lost'} ${what} · ${d.name} · round ${ev.round} · ${ev.lives} lives · ${money(ev.cash)} · ${ev.towers} towers`, ev.won ? 'good' : 'bad', 6000);
+        toast(`${ev.won ? "🏆 " : ""}${ev.name} ${ev.won ? "won" : "lost"} ${what} · ${d.name} · round ${ev.round} · ${ev.lives} lives · ${money(ev.cash)} · ${ev.towers} towers`, ev.won ? 'good' : 'bad', 6000);
         return;
     }
     const el = document.createElement('div');
@@ -1829,14 +2293,24 @@ function onPlayerEvent(ev) {
     el.innerHTML = `${avatarSVG({ animal: ev.animal, style: ev.style, bg: ev.bg, border: ev.border, uid: ev.uid }, 40)}
       <div class="grow"><b>${esc(ev.name)} ${ev.won ? 'won' : 'lost'}</b> <span>${esc(what)}</span>
       <div class="nstats"><span title="Difficulty">${badgeSVG(d.badge, ev.won, 18)}${d.name}</span><span>Round ${ev.round}</span><span>♥ ${ev.lives}</span><span>${money(ev.cash)}</span><span>${ev.towers} towers</span></div></div>
-      <button class="x" title="Dismiss">×</button>`;
+      ${ev.won ? '<img class="ntrophy" src="assets/ui/trophy.svg" alt="Trophy" title="Won">' : ''}<button class="x" title="Dismiss">×</button>`;
+    pushNote(el, 9000);
+}
+function pushNote(el, ms) {
     const box = $('notes');
     box.appendChild(el);
     while (box.children.length > 3)
         box.firstChild.remove();
     const bye = () => { el.classList.add('out'); setTimeout(() => el.remove(), 400); };
     el.querySelector('.x').addEventListener('click', bye);
-    setTimeout(bye, 9000);
+    setTimeout(bye, ms);
+}
+/** A plain message card at the top right (on top of the HUD's own toasts, so it is seen on every screen). */
+function showNote(text, kind = 'won') {
+    const el = document.createElement('div');
+    el.className = 'note ' + kind;
+    el.innerHTML = `<div class="grow"><b>${esc(text)}</b></div><button class="x" title="Dismiss">×</button>`;
+    pushNote(el, 8000);
 }
 /* ----- News: what changed in each version ----- */
 function newsUnread() { const s = store.get('seen', null); return !s || s.version !== VERSION; }
@@ -1851,8 +2325,10 @@ $('mNews').addEventListener('click', openNews);
 /* ----- Profile cards (yours and every other player's on this PC) ----- */
 function openProfileCard(key = ACTIVE_KEY) {
     const players = allPlayers(), pl = players.find(x => x.key === key);
+    if ((!pl || pl.me) && key === ACTIVE_KEY && !loggedIn())
+        return openLogin();
     if (!pl)
-        return key === ACTIVE_KEY ? openCreateProfile() : undefined;
+        return;
     const me = pl.me, p = pl.id, P = pl.profile, title = titleOf(pl), hrs = Math.floor(P.seconds / 3600), mins = Math.floor(P.seconds / 60) % 60;
     const fav = Object.entries(P.built).sort((a, b) => b[1] - a[1])[0];
     const L = levelOf(P.xp), next = xpForLevel(L + 1), cur = xpForLevel(L), nt = TITLES.find(t => P.pops < t.pops);
@@ -1869,8 +2345,8 @@ function openProfileCard(key = ACTIVE_KEY) {
       ${nt ? `<div class="pnext">Next title: <b>${esc(nt.name)}</b> · ${P.pops.toLocaleString()} / ${nt.pops.toLocaleString()} pops</div>` : '<div class="pnext">Highest title reached</div>'}
       <div class="medalrow" title="1st, 2nd and 3rd places held on Standard stage boards">${MEDALS.map(m => `<span><img src="assets/ui/medal-${m}.svg" alt="${m}">${md[m]}</span>`).join('')}<small class="muted">${medalPoints(md)} pts${p.uid && p.uid === CROWN_UID ? ' · <b class="crownc">Global #1</b>' : ''}${others ? '' : ' · add players to compete'}</small></div>
       <div class="lvlbig"><b>Level ${L}</b><div class="xpbar"><i style="width:${Math.round(100 * (P.xp - cur) / (next - cur))}%"></i></div><span>${(P.xp - cur).toLocaleString()} / ${(next - cur).toLocaleString()} XP to level ${L + 1}</span></div>
-      <div class="row left" style="margin-top:6px">${me ? '<button class="btn" data-act="editprofile">Edit profile</button>'
-        : `<span class="onl ${isOnline(pl) ? 'on' : 'off'}"><i class="sdot ${isOnline(pl) ? 'on' : 'off'}"></i>${isOnline(pl) ? 'Online' : 'Offline'}</span><span class="muted small">Plays on ${pl.remote || !homeHere(p) ? 'another PC' : 'this PC'}${pl.updated ? ' · last saved ' + ago(pl.updated) : ''}</span>`}</div></div></div>
+      <div class="row left" style="margin-top:6px">${me ? `<button class="btn" data-act="editprofile">Edit profile</button><button class="btn" data-act="changepw">${hasPassword(p) ? 'Change password' : 'Set password'}</button><button class="btn" data-act="history" data-player="${esc(key)}">Game history</button><button class="btn" data-act="logout">Log out</button>`
+        : `<span class="onl ${isOnline(pl) ? 'on' : 'off'}"><i class="sdot ${isOnline(pl) ? 'on' : 'off'}"></i>${isOnline(pl) ? 'Online' : 'Offline' + (lastSeen(pl) ? ' · ' + agoShort(lastSeen(pl)) : '')}</span><span class="muted small">Plays on ${pl.remote || !homeHere(p) ? 'another PC' : 'this PC'}${pl.updated ? ' · last saved ' + ago(pl.updated) : ''}</span><button class="btn small" data-act="history" data-player="${esc(key)}">Game history</button>`}</div></div></div>
     <div class="bigstats four">
       <div><b>${P.pops.toLocaleString()}</b><span>Balloons popped</span></div>
       <div><b>${P.games}</b><span>Games played</span></div>
@@ -1963,6 +2439,8 @@ setInterval(() => {
     const t = $('wbTimer');
     if (t && $('menu').classList.contains('on'))
         t.innerHTML = wbTimerHTML();
+    if ($('wbNewsTimer'))
+        $('wbNewsTimer').innerHTML = wbNewsTimerHTML();
     const st = wbWeek() + '|' + wbOpen() + '|' + wbChampWeek();
     if (UI.wbState !== undefined && UI.wbState !== st) {
         refreshWbChamp();
@@ -1975,7 +2453,7 @@ setInterval(() => {
 }, 1000);
 /** The champion greeting: once per event for each player on this PC, over whatever is on screen. A game pauses. */
 function checkWbChampModal() {
-    if (!activePlayable() || UI.modal === 'wbchamp' || UI.modal === 'create' || UI.modal === 'find' || UI.modal === 'restore')
+    if (!loggedIn() || UI.modal === 'wbchamp' || UI.modal === 'wbnews' || UI.modal === 'restore')
         return;
     const players = allPlayers(), c = wbChamp(players);
     if (!c || store.get('wbChampSeen', -1) >= c.k)
@@ -2017,9 +2495,51 @@ function closeWbChamp() {
     else
         closeModal();
 }
+/** The big countdown in the World Boss news: "Ends in" / "Opens in" and the time left. */
+function wbNewsTimerHTML() {
+    const k = wbWeek(), open = wbOpen();
+    return `<span>${open ? 'Ends in' : 'Opens in'}</span><b>${wbLeft(open ? wbEndsAt(k) : wbStartsAt(k))}</b>`;
+}
+/** 5.1: the World Boss news, every time you log in: one big banner with this week's boss, its stats, the countdown,
+    how today is going and the reigning champion. */
+function openWbNews() {
+    if (!loggedIn())
+        return;
+    const k = wbWeek(), p = wbPick(k), open = wbOpen(), players = allPlayers(), c = wbChamp(players);
+    const board = open ? wbBoard(k, players) : [], mine = board.find(x => x.p.me), col = BT[p.boss.id].col;
+    UI.wbNewsOpen = true;
+    const stat = (label, val) => `<div class="wbn-stat"><span>${label}</span><b>${val}</b></div>`;
+    const today = !open ? '' : mine ? `You are <b>#${mine.rank}</b> today with <b>${mine.d.toLocaleString()}</b> damage. Beat it!`
+        : board.length ? `<b>${board.length}</b> player${board.length > 1 ? 's have' : ' has'} fought it today · top damage <b>${esc(board[0].p.id.name)}</b> ${board[0].d.toLocaleString()}`
+            : 'Nobody has fought it yet today. <b>Be the first!</b>';
+    openModal('wbnews', `<div class="wbn" style="--wbc:${col}">
+      <button class="iconbtn x wbn-x" data-act="wbnews-close" title="Close"><img src="assets/ui/close.svg" alt="Close"></button>
+      <div class="wbn-rays"></div>
+      <div class="wbn-top"><span class="wbn-tag">${open ? '<i class="wbn-live"></i>LIVE NOW' : 'THIS WEEK'}</span><span class="wbn-kicker">World Boss Event</span></div>
+      <div class="wbn-hero">
+        <div class="wbn-art"><div class="wbn-glow"></div>${wbImg(p.boss.id, 'wbn-boss')}</div>
+        <div class="wbn-info">
+          <h2 class="wbn-name">${esc(p.boss.name)}</h2>
+          <div class="wbn-build">${esc(p.boss.build)}</div>
+          <div class="wbn-where">on <b>${esc(p.map.name)}</b></div>
+          <div class="wbn-timer" id="wbNewsTimer">${wbNewsTimerHTML()}</div>
+          <div class="wbn-when">${open ? 'Open until 5:00 PM today (PH time)' : 'Fri 7:30 AM – 5:00 PM (PH time) · ' + esc(wbOpensTxt()) + ' your time'}</div>
+        </div>
+      </div>
+      <div class="wbn-stats">${stat('HP', WB_HP.toLocaleString())}${stat('Speed', esc(p.boss.speed))}${stat('Defense', esc(p.boss.defTxt.replace(/ \(.*\)/, '')))}${stat('Summons', esc(p.boss.summonTxt))}${stat('Lives', WB_LIVES.toLocaleString())}${stat('Start', money(p.boss.cash))}</div>
+      ${today ? `<div class="wbn-today">${today}</div>` : ''}
+      ${c ? `<div class="wbn-champ">${avatarSVG(avatarOf(c.p.id), 46)}<div><small>Reigning champion</small><b>${esc(c.p.id.name)}</b><span>${c.d.toLocaleString()} damage on ${esc(c.boss.name)}</span></div></div>` : ''}
+      <div class="wbn-actions"><button class="btn" data-act="wbinfo">How it works</button>${open ? '<button class="btn" data-act="wbnews-close">Later</button><button class="btn primary big wbn-fight" data-act="wbnews-fight">⚔ Fight now</button>' : '<button class="btn primary big" data-act="wbnews-close">Got it</button>'}</div>
+    </div>`, 'wbncard');
+}
+function closeWbNews() {
+    UI.wbNewsOpen = false;
+    closeModal();
+    maybeWhatsNew();
+}
 /** World Boss notifications: a new boss, last week's results and your medal (each only once). */
 function checkWbNotes() {
-    if (!activePlayable())
+    if (!loggedIn())
         return;
     for (const n of wbNotes(allPlayers()))
         addNote(n);
@@ -2037,14 +2557,23 @@ function onNotesChange() {
 function noteIcon(x) {
     if (x.av)
         return avatarSVG(x.av, 36);
-    const img = x.kind === 'wb' ? 'assets/balloons/boss.svg' : x.kind === 'medal' ? 'assets/ui/medal-gold.svg' : x.kind === 'crown' ? 'assets/ui/trophy.svg' : 'assets/ui/chart.svg';
+    const img = x.kind === 'wb' ? 'assets/balloons/boss.svg' : x.kind === 'medal' ? 'assets/ui/medal-gold.svg' : x.kind === 'crown' || x.kind === 'trophy' ? 'assets/ui/trophy.svg' : 'assets/ui/chart.svg';
     return `<img class="nicon" src="${img}" alt="">`;
+}
+/** 5.1: notifications about a win, a medal, a top 3 place, the crown or a World Boss result carry a trophy. */
+function noteTrophy(x) {
+    const k = x.kind, id = String(x.id || '');
+    if (k === 'won' || k === 'medal' || k === 'crown' || k === 'trophy' || (k === 'wb' && id.startsWith('wbend-'))) {
+        const m = /\b(gold|silver|bronze)\b/i.exec(x.text || ''), col = m ? m[1].toLowerCase() : 'gold';
+        return `<img class="ntrophy ${col}" src="assets/ui/trophy.svg" alt="Trophy" title="Trophy">`;
+    }
+    return '';
 }
 function renderNotesList() {
     const el = $('notesList'), list = notesList();
     if (!el)
         return;
-    el.innerHTML = list.length ? list.map(x => `<div class="nrow${x.read ? '' : ' unread'} k-${esc(x.kind)}">${noteIcon(x)}<div class="grow"><b>${esc(x.text)}</b>${x.sub ? `<span>${esc(x.sub)}</span>` : ''}</div><time>${time12(x.at)}<small>${new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small></time></div>`).join('')
+    el.innerHTML = list.length ? list.map(x => `<div class="nrow${x.read ? '' : ' unread'} k-${esc(x.kind)}">${noteIcon(x)}<div class="grow"><b>${esc(x.text)}</b>${x.sub ? `<span>${esc(x.sub)}</span>` : ''}</div>${noteTrophy(x)}<time>${time12(x.at)}<small>${new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small></time></div>`).join('')
         : '<p class="muted" style="text-align:center;margin:18px 0">No notifications yet.</p>';
 }
 function openNotes() {
@@ -2058,21 +2587,41 @@ $('mBell').addEventListener('click', openNotes);
 /* ---------- Chat ---------- */
 function chatReadAt() { return +store.get('chatRead', 0) || 0; }
 function refreshChatDot() {
-    const n = activePlayable() ? Chat.unread(chatReadAt()) : 0;
+    const n = loggedIn() ? Chat.unread(chatReadAt()) : 0;
     $('mChat').classList.toggle('dot', n > 0 && UI.modal !== 'chat');
 }
+/** Rank in chat (5.1): the Global Top 10 place when the player has one, and always their level. */
 function chatBadge(uid, players) {
-    const r = globalRankOf(uid, players);
-    return r ? `<i class="gbadge${r <= 3 ? ' m' + r : ''}" title="Global Top 10: #${r}">#${r}</i>` : '';
+    const r = globalRankOf(uid, players), pl = players.find(p => p.id.uid === uid);
+    return (r ? `<i class="gbadge${r <= 3 ? ' m' + r : ''}" title="Global Top 10: #${r}">#${r}</i>` : '')
+        + (pl ? `<i class="lvbadge" title="Level ${levelOf(pl.profile.xp)}">Lv ${levelOf(pl.profile.xp)}</i>` : '');
 }
-/** One message, messenger style: yours on the right (no avatar or name), everyone else's on the left. Messages from the
-    same person within 5 minutes are grouped: only the first shows the name, only the last shows the avatar and time. */
-function chatRowHTML(m, players, prev, next) {
-    const me = m.uid === (getId() || {}).uid, same = (x) => x && x.uid === m.uid && Math.abs(x.at - m.at) < 300000;
-    const first = !same(prev), last = !same(next);
-    const av = me ? '' : last ? avatarSVG({ uid: m.uid, animal: m.animal, style: m.style, bg: m.bg, border: m.border }, 32) : '<span class="cav"></span>';
-    const head = !me && first ? `<div class="chead"><b>${esc(m.name)}</b>${chatBadge(m.uid, players)}${m.title ? `<span class="ctitle">${esc(m.title)}</span>` : ''}</div>` : '';
-    return `<div class="cmsg${me ? ' mine' : ''}${first ? ' first' : ''}${last ? ' last' : ''}">${av}<div class="cbody">${head}<div class="cbub">${esc(m.text)}</div>${last ? `<time>${time12(m.at)}</time>` : ''}</div></div>`;
+/* Chat, Messenger style (5.1):
+   - a centred time line ("11:30 PM · 30m ago") starts the chat and comes back whenever 5 minutes or more pass
+   - messages from the same person sent within 2 minutes of each other (and not across a time line) form one run:
+     the first shows the avatar beside the name, level, rank and title; the rest line up under it
+   - "Sent 30m ago" under your latest message; every bubble shows its exact time when you point at it */
+const CHAT_GAP_LINE = 300000, CHAT_GAP_RUN = 120000;
+function chatTimeLine(at, now = Date.now()) {
+    const d = new Date(at), today = new Date(now), y = new Date(now - 864e5);
+    const day = d.toDateString() === today.toDateString() ? '' : d.toDateString() === y.toDateString() ? 'Yesterday ' : d.toLocaleDateString(undefined, { weekday: 'short' }) + ' ';
+    const ago = agoShort(at, now);
+    return day + time12(at) + (ago ? ' · ' + ago : '');
+}
+function chatRowHTML(m, players, prev, next, isLast) {
+    const myId = getId() || {}, me = m.uid === myId.uid, now = Date.now();
+    const line = !prev || m.at - prev.at >= CHAT_GAP_LINE || new Date(prev.at).toDateString() !== new Date(m.at).toDateString();
+    const nextLine = !!next && (next.at - m.at >= CHAT_GAP_LINE || new Date(next.at).toDateString() !== new Date(m.at).toDateString());
+    const first = line || !(prev.uid === m.uid && m.at - prev.at < CHAT_GAP_RUN);
+    const last = !next || nextLine || !(next.uid === m.uid && next.at - m.at < CHAT_GAP_RUN);
+    const look = me ? Object.assign({}, m, { animal: myId.animal, style: myId.style, bg: myId.bg, border: myId.border, name: myId.name, title: currentTitle(myId).name }) : m;
+    const av = first ? avatarSVG({ uid: m.uid, animal: look.animal, style: look.style, bg: look.bg, border: look.border }, 36) : '<span class="cav"></span>';
+    const head = first ? `<div class="chead"><b>${esc(look.name)}</b>${me ? '<u>you</u>' : ''}${chatBadge(m.uid, players)}${look.title ? `<span class="ctitle">${esc(look.title)}</span>` : ''}</div>` : '';
+    const emojiOnly = /^(?:\p{Extended_Pictographic}|\p{Emoji_Component}|️|‍|\s)+$/u.test(m.text) && !/[0-9#*]/.test(m.text) && [...m.text.replace(/\s/g, '')].length <= 12;
+    const exact = new Date(m.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    const sent = me && isLast ? `<div class="csent">Sent ${agoShort(m.at, now)}</div>` : '';
+    return (line ? `<div class="cline"><span>${esc(chatTimeLine(m.at, now))}</span></div>` : '')
+        + `<div class="cmsg${me ? ' mine' : ''}${first ? ' first' : ''}${last ? ' last' : ''}">${av}<div class="cbody">${head}<div class="cbub${emojiOnly ? ' emo' : ''}" title="${esc(exact)}">${esc(m.text)}</div>${sent}</div></div>`;
 }
 function renderChatList(stick = true) {
     const el = $('chatList');
@@ -2080,13 +2629,19 @@ function renderChatList(stick = true) {
         return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40, players = allPlayers();
     refreshCrown(players);
-    el.innerHTML = Chat.msgs.length ? Chat.msgs.map((m, i) => chatRowHTML(m, players, Chat.msgs[i - 1], Chat.msgs[i + 1])).join('') : '<p class="muted" style="text-align:center;margin:30px 0">No messages in the last 24 hours. Say hi!</p>';
+    const n = Chat.msgs.length;
+    el.innerHTML = n ? Chat.msgs.map((m, i) => chatRowHTML(m, players, Chat.msgs[i - 1], Chat.msgs[i + 1], i === n - 1)).join('') : '<p class="muted" style="text-align:center;margin:30px 0">No messages in the last 24 hours. Say hi!</p>';
     if (stick || atBottom)
         el.scrollTop = el.scrollHeight;
 }
+// "30m ago" and "Sent just now" stay current while the chat is open
+setInterval(() => {
+    if (UI.modal === 'chat')
+        renderChatList(false);
+}, 30000);
 function openChat() {
-    if (!activePlayable())
-        return openCreateProfile();
+    if (!loggedIn())
+        return openLogin();
     const off = !Share.connected();
     openModal('chat', `<div class="cardhead"><h2>Chat</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
     <p class="muted small" style="margin:0 0 8px">Everyone on the shared folder · messages are cleared after 24 hours</p>
@@ -2195,73 +2750,187 @@ function pumpChatToasts() {
 }
 // the chat folder is checked every 5 seconds, on the home page and during games
 setInterval(() => {
-    if (Share.connected() && activePlayable())
+    if (Share.connected() && loggedIn())
         Chat.poll();
 }, 5000);
-/* ---------- Find my profile (PP-7) ---------- */
-/** Every profile that could be yours: from the shared folder and this browser's backups (not ones that play here). */
-async function findCandidates() {
-    const seen = new Map();
+/* ---------- Find my profile: in 5.1 logging in does this (a profile from another PC moves here) ---------- */
+function openFindProfile() { openLogin(); }
+/* ---------- Game history (5.1) ---------- */
+function historyWhat(h) {
+    if (h.wb) {
+        const b = WB_BOSSES.find(x => x.id === h.wb), m = WB_MAPS.find(x => x.id === h.map);
+        return 'World Boss · ' + (b ? b.name : h.wb) + (m ? ' · ' + m.name : '');
+    }
+    const m = MAPS.find(x => x.id === h.map), d = DIFF[h.diff];
+    return (h.daily ? 'Daily · ' : '') + (m ? m.name : h.map) + ' · ' + (d ? d.name : h.diff) + (h.mode && h.mode !== 'standard' && MODES[h.mode] ? ' · ' + MODES[h.mode].name : '');
+}
+function openHistory(key = ACTIVE_KEY) {
+    const pl = allPlayers().find(x => x.key === key);
+    if (!pl)
+        return;
+    const list = (pl.history || []).slice().sort((a, b) => (+b.at || 0) - (+a.at || 0));
+    const wins = list.filter(h => h.won).length;
+    const rows = list.map(h => {
+        const res = h.wb ? `<b>${(+h.score || 0).toLocaleString()}</b> damage` : h.won ? '<b class="okc">Won</b>' : '<b class="badc">Lost</b>';
+        const trophy = h.won || (h.rank && h.rank <= 3) ? `<img class="ntrophy${h.rank && h.rank <= 3 ? ' ' + MEDALS[h.rank - 1] : ''}" src="assets/ui/trophy.svg" alt="Trophy" title="${h.rank && h.rank <= 3 ? MEDALS[h.rank - 1] + ' on the stage board' : 'Won'}">` : '';
+        const stats = h.wb ? `${fmtClock(h.wbTime || 0)} · ${h.lives.toLocaleString()} lives left` : `Round ${h.round} · ${h.lives} lives · ${(+h.pops || 0).toLocaleString()} pops · ${fmtClock(h.clock || 0)}`;
+        return `<tr class="${h.won ? 'won' : 'lost'}"><td class="l"><b>${esc(historyWhat(h))}</b><small class="muted">${stats}</small></td><td class="n">${res}${h.rank ? ` <small class="muted">#${h.rank}</small>` : ''}</td><td class="n">${trophy}</td>
+          <td class="n when">${time12(h.at)}<small>${new Date(h.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</small></td></tr>`;
+    }).join('');
+    openModal('history', `<div class="cardhead"><h2>Game history <small class="muted">· ${esc(pl.id.name)}</small></h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
+    <p class="muted small" style="margin:0 0 8px">The last ${HISTORY_MAX} finished games${list.length ? ` · ${wins} won of ${list.length}` : ''}.</p>
+    ${list.length ? `<div class="histwrap"><table class="histtable"><thead><tr><th class="l">Game</th><th>Result</th><th></th><th>When</th></tr></thead><tbody>${rows}</tbody></table></div>`
+        : '<p class="muted" style="text-align:center;margin:18px 0">No finished games yet. Games played from 5.1 on show here.</p>'}
+    <div class="row"><button class="btn" data-act="player" data-player="${esc(key)}">Back to profile</button></div>`, 'wide');
+}
+/* ---------- Master control (5.1): reset a password, delete an account, restore a deleted account ----------
+   Protected by a master password, set the first time Master control is opened. It is kept (as a salted hash) in the
+   shared folder, so every PC uses the same one. Forgot it? Delete balloon-defense-admin/admin.json in the shared folder. */
+function openMaster() {
+    if (UI.masterOk)
+        return renderMaster();
+    const set = masterSet();
+    openModal('master', `<div class="cardhead"><h2>Master control</h2><button class="iconbtn x" data-act="${loggedIn() ? 'close' : 'signin'}"><img src="assets/ui/close.svg" alt="Close"></button></div>
+    ${Share.connected() ? '' : '<div class="warnline">The shared folder isn\'t connected: only this PC\'s profiles can be changed, and a new master password is only kept on this PC.</div>'}
+    <form onsubmit="return false" autocomplete="off">
+    ${set ? '<p class="lead">Type the master password.</p><label class="lbl" for="mpIn">Master password</label><input id="mpIn" type="password" maxlength="40" style="width:100%" autocomplete="off">'
+        : `<p class="lead">No master password yet. Set one now: whoever knows it can reset passwords and delete or restore accounts on every PC.</p>
+      <div class="pwpair"><div><label class="lbl" for="mpIn">New master password</label><input id="mpIn" type="password" maxlength="40" autocomplete="new-password" placeholder="At least 4 characters"></div>
+      <div><label class="lbl" for="mp2In">Type it again</label><input id="mp2In" type="password" maxlength="40" autocomplete="new-password"></div></div>`}
+    </form><div class="err" id="mpErr"></div>
+    <div class="row"><button class="btn" data-act="${loggedIn() ? 'close' : 'signin'}">${loggedIn() ? 'Cancel' : 'Back'}</button><button class="btn primary" data-act="master-unlock">${set ? 'Open' : 'Set master password'}</button></div>`);
+    const go = (e) => {
+        if (e.key === 'Enter')
+            masterAction('master-unlock', null);
+    };
+    $('mpIn').addEventListener('keydown', go);
+    if ($('mp2In'))
+        $('mp2In').addEventListener('keydown', go);
+    setTimeout(() => $('mpIn') && $('mpIn').focus(), 30);
+    // pick up a master password set on another PC before deciding
+    if (!set && Share.connected())
+        Share.readAdmin().then(() => {
+            if (masterSet() && UI.modal === 'master' && !UI.masterOk)
+                openMaster();
+        });
+}
+/** Every account master control can act on: live ones (this PC and the shared folder) and deleted ones. */
+function masterAccounts() {
+    const out = new Map();
+    for (const pl of allPlayers())
+        out.set(pl.id.uid, { uid: pl.id.uid, id: pl.id, deleted: false, here: !pl.remote, online: isOnline(pl), pw: hasPassword(bestId(pl.id.uid) || pl.id) });
     for (const o of sharedCache().players)
-        if (o && o.uid && !o.deleted && o.id && o.id.name)
-            seen.set(o.uid, { uid: o.uid, id: o.id, profile: Object.assign({}, PROFILE_DEFAULT, o.profile || {}), at: +o.updated || 0, inuse: inUseElsewhere(o.uid), where: 'folder' });
-    for (const b of await Share.browserProfiles())
-        if (!seen.has(b.uid))
-            seen.set(b.uid, { uid: b.uid, id: b.data.id, profile: Object.assign({}, PROFILE_DEFAULT, b.data.profile || {}), at: b.at, inuse: false, where: 'browser' });
-    for (const pl of localPlayers())
-        if (!homeHere(pl.id) && !seen.has(pl.id.uid))
-            seen.set(pl.id.uid, { uid: pl.id.uid, id: pl.id, profile: pl.profile, at: pl.updated, inuse: inUseElsewhere(pl.id.uid), where: 'pc' });
-    return [...seen.values()].sort((a, b) => b.at - a.at);
+        if (o && o.deleted && !out.has(o.uid))
+            out.set(o.uid, { uid: o.uid, id: o.look ? Object.assign({ uid: o.uid }, o.look) : { uid: o.uid, name: '(deleted profile)', tag: '' }, deleted: true, at: o.at, by: o.by });
+    return [...out.values()].sort((a, b) => (+a.deleted - +b.deleted) || String(a.id.name).localeCompare(b.id.name));
 }
-function openFindProfile() {
-    const note = Share.connected() ? '' : Share.state === 'paused' ? '<div class="warnline">Reconnect the shared folder to see every profile. <button class="btn small" data-act="share-resume">Reconnect</button></div>'
-        : '<div class="warnline">Connect the shared folder to find your profile. <button class="btn small" data-act="share-connect">Connect shared folder</button></div>';
-    openModal('find', `<h2>${hasProfile() ? 'Find my profile' : 'Welcome to Balloon Defense'}</h2>${canCreateProfile() ? profileTabs('find') : ''}
-    ${!hasProfile() && lostProfiles().length ? `<div class="warnline"><b>${lostProfiles().map(p => esc(p.id.name)).join(', ')}</b> now ${lostProfiles().length > 1 ? 'play' : 'plays'} on another PC. Each profile plays on one PC only. To play it on this PC, pick it below.</div>` : ''}
-    <p class="lead">Lost your profile? Pick it here to bring it to this PC with all its progress. <b>It moves:</b> the PC it was on can't play it any more.</p>
-    ${note}<div class="playergrid signin" id="findGrid"><p class="muted">Looking for profiles…</p></div>
-    <div class="row" style="justify-content:space-between;align-items:center">${profileFoot()}</div>`, 'wide');
-    findCandidates().then(list => {
-        const el = $('findGrid');
-        if (!el || UI.modal !== 'find')
-            return;
-        el.innerHTML = list.length ? list.map(c => `<button class="ptile" data-act="${c.inuse ? '' : 'findpick'}" data-uid="${esc(c.uid)}" ${c.inuse ? 'disabled' : ''} title="${c.inuse ? 'Being played on another PC right now' : 'Move ' + esc(c.id.name) + ' to this PC'}">
-          <i class="sdot ${c.inuse ? 'on' : 'off'}" title="${c.inuse ? 'Online' : 'Offline'}"></i>${avatarSVG(Object.assign({}, c.id, { uid: c.uid }), 64)}<b>${esc(c.id.name)}</b><small>Lv ${levelOf(c.profile.xp)}</small><span>${c.at ? 'played ' + ago(c.at) : ''}</span></button>`).join('')
-            : '<p class="muted">No profiles found yet.</p>';
-    });
+function renderMaster(msg) {
+    const list = masterAccounts();
+    const row = (a) => `<tr class="${a.deleted ? 'gone' : ''}"><td class="who"><div class="wc">${avatarSVG(Object.assign({}, a.id, { uid: a.uid }), 30)}<span><b>${esc(a.id.name)}${a.id.tag ? '<em>#' + esc(a.id.tag) + '</em>' : ''}</b>
+      <small>${a.deleted ? 'Deleted' + (a.at ? ' ' + agoShort(a.at) : '') : (a.online ? 'Online' : 'Offline') + ' · ' + (a.pw ? 'has a password' : 'no password')}</small></span></div></td>
+      <td class="acts">${a.deleted ? `<button class="btn small primary" data-act="master-restore" data-uid="${esc(a.uid)}">Restore account</button>`
+        : `<button class="btn small" data-act="master-reset" data-uid="${esc(a.uid)}" ${a.pw ? '' : 'disabled title="No password to reset"'}>Reset password</button><button class="btn small danger" data-act="master-delete" data-uid="${esc(a.uid)}">Delete account</button>`}</td></tr>`;
+    openModal('master', `<div class="cardhead"><h2>Master control</h2><button class="iconbtn x" data-act="master-close"><img src="assets/ui/close.svg" alt="Close"></button></div>
+    <p class="muted small" style="margin:0 0 8px"><b>Reset password</b>: the player makes a new password at their next log-in. <b>Delete account</b>: removed from every PC (its backups stay, so it can be restored). <b>Restore account</b>: brought back from its backups, with its password.</p>
+    ${msg ? `<div class="mmsg">${esc(msg)}</div>` : ''}
+    <div class="histwrap mtable"><table class="mastertable"><tbody>${list.map(row).join('') || '<tr><td class="muted">No accounts yet.</td></tr>'}</tbody></table></div>
+    <div class="row" style="justify-content:space-between"><button class="btn" data-act="master-changepw">Change master password</button><button class="btn primary" data-act="master-close">Done</button></div>`, 'wide');
 }
-function findPick(b) {
-    const uid = b.dataset.uid;
-    if (inUseElsewhere(uid)) {
-        toast('That profile is being played on another PC right now. Try again in a couple of minutes.', 'warn');
-        return;
-    }
-    if (!b.dataset.armed) {
-        document.querySelectorAll('#findGrid [data-armed]').forEach((x) => { delete x.dataset.armed; x.classList.remove('armed'); });
-        b.dataset.armed = '1';
-        b.classList.add('armed');
-        toast('Click it again to move this profile to this PC', 'warn');
-        return;
-    }
-    b.disabled = true;
-    const local = localPlayers().find(p => p.id.uid === uid);
-    Share.copiesOf(uid).then(copies => {
-        if (local)
-            copies.push(readSlot(local.key));
-        const key = moveProfileHere(copies);
-        if (!key) {
-            toast('That profile can\'t be moved here', 'bad');
-            b.disabled = false;
+function masterAction(a, b) {
+    if (a === 'master')
+        return openMaster();
+    if (a === 'master-unlock') {
+        const pw = $('mpIn').value;
+        if (masterSet() && !UI.masterChange) {
+            if (!checkMaster(pw)) {
+                $('mpErr').textContent = 'Wrong master password';
+                return;
+            }
+            UI.masterOk = true;
+            return renderMaster();
+        }
+        const why = pwProblem(pw, $('mp2In') ? $('mp2In').value : pw);
+        if (why) {
+            $('mpErr').textContent = why;
             return;
         }
-        // the new home is written to the folder straight away, so the old PC learns it has moved
-        Share.pushActive().then(() => location.reload());
-    });
+        UI.masterChange = false;
+        UI.masterOk = true;
+        Share.saveAdmin({ master: makePw(pw), resets: {} }).then(() => renderMaster('Master password saved.'));
+        return;
+    }
+    if (!UI.masterOk)
+        return openMaster();
+    const uid = b && b.dataset.uid, acc = uid ? masterAccounts().find(x => x.uid === uid) : null;
+    if (a === 'master-close') {
+        UI.masterOk = false;
+        if (loggedIn())
+            closeModal();
+        else
+            openLogin();
+    }
+    else if (a === 'master-changepw') {
+        UI.masterChange = true;
+        openModal('master', `<div class="cardhead"><h2>Change master password</h2></div><form onsubmit="return false" autocomplete="off">
+        <div class="pwpair"><div><label class="lbl" for="mpIn">New master password</label><input id="mpIn" type="password" maxlength="40" autocomplete="new-password"></div>
+        <div><label class="lbl" for="mp2In">Type it again</label><input id="mp2In" type="password" maxlength="40" autocomplete="new-password"></div></div></form><div class="err" id="mpErr"></div>
+        <div class="row"><button class="btn" data-act="master-back">Cancel</button><button class="btn primary" data-act="master-unlock">Save</button></div>`);
+    }
+    else if (a === 'master-back') {
+        UI.masterChange = false;
+        renderMaster();
+    }
+    else if (a === 'master-reset' && acc) {
+        if (!b.dataset.armed) {
+            b.dataset.armed = '1';
+            b.textContent = 'Click again to reset';
+            return;
+        }
+        Share.saveAdmin({ master: null, resets: { [uid]: Date.now() } }).then(() => { Share.syncSoon(); renderMaster('Password of ' + acc.id.name + ' reset. They make a new one at their next log-in.'); });
+    }
+    else if (a === 'master-delete' && acc) {
+        if (!b.dataset.armed) {
+            b.dataset.armed = '1';
+            b.textContent = 'Click again: delete ' + acc.id.name + ' everywhere';
+            return;
+        }
+        b.disabled = true;
+        const look = acc.id, wasMe = (getId() || {}).uid === uid;
+        // a last backup first, so the account can be restored with everything it had
+        const copy = localPlayers().find(p => p.id.uid === uid);
+        (copy ? Share.autoBackup(readSlot(copy.key)) : Promise.resolve(false)).catch(() => false).then(() => {
+            const r = dropProfileHere(uid);
+            return Share.tombstone(uid, look, 'admin').then(ok => ({ ok, r }));
+        }).then(({ ok, r }) => {
+            if (!ok && !r.removed) {
+                renderMaster('Couldn\'t delete ' + look.name + ': connect the shared folder first.');
+                return;
+            }
+            if (wasMe || r.wasActive) {
+                setSession('');
+                showNote(look.name + ' was deleted.', 'lost');
+                setTimeout(() => location.reload(), 1200);
+                return;
+            }
+            renderMaster(look.name + ' was deleted' + (ok ? ' on every PC.' : ' from this PC (connect the shared folder to delete it everywhere).'));
+            buildMenu();
+        });
+    }
+    else if (a === 'master-restore' && acc) {
+        b.disabled = true;
+        b.textContent = 'Restoring…';
+        Share.restoreAccount(uid).then(why => {
+            renderMaster(why ? 'Couldn\'t restore: ' + why + '.' : acc.id.name + ' is back. They can log in on any PC.');
+            if (!why)
+                buildMenu();
+        });
+    }
+    return true;
 }
 /* ---------- Protection bar: progress is only in this browser (PP-8) ---------- */
 function renderProtectBar() {
     const el = $('protectBar'), st = Share.state;
-    const show = activePlayable() && (st === 'off' || st === 'paused' || st === 'error');
+    const show = loggedIn() && (st === 'off' || st === 'paused' || st === 'error');
     el.classList.toggle('on', show);
     if (show)
         el.innerHTML = `<b>Progress is only on this PC.</b><span>Connect the shared folder to protect it.</span>${st === 'paused'
@@ -2274,7 +2943,7 @@ $('protectBar').addEventListener('click', (e) => {
 });
 /** Global #1 changed since this PC last looked: a notification (not on the first look). */
 function checkCrownNote() {
-    if (!activePlayable())
+    if (!loggedIn())
         return;
     const key = 'balloonDefense.lastCrown';
     let last = null;
@@ -2335,19 +3004,29 @@ function boot() {
             location.reload();
             return;
         }
+        syncLock(); // logged out: the home page stays hidden behind the sign-in page
         buildMenu();
         show('menu');
         requestAnimationFrame(frame);
         shareReady.then(() => {
-            dailyAutoBackup();
+            if (loggedIn())
+                dailyAutoBackup();
             checkWbNotes();
             buildMenu();
             Chat.poll().then(refreshChatDot);
-            if (!hasProfile() && UI.modal === 'create' && !canCreateProfile())
-                openFindProfile();
+            if (UI.modal === 'login') // the shared folder is read now: show its players too
+                openLogin(UI.loginNote);
         });
-        if (!hasProfile())
-            lostProfiles().length ? openFindProfile() : openCreateProfile(); // a PC whose profile moved away: help bring it back
+        // 5.1: every visit starts with the log-in screen (a reload in the same browser tab stays logged in)
+        if (!loggedIn()) {
+            const lost = lostProfiles().map(p => esc(p.id.name));
+            UI.loginNote = lost.length ? `<b>${lost.join(', ')}</b> ${lost.length > 1 ? 'were' : 'was'} logged in on another PC and moved there. Log in to bring ${lost.length > 1 ? 'one' : 'it'} back to this PC.` : '';
+            if (sessionUid() && hasProfile() && sessionUid() !== getId().uid)
+                setSession(''); // the tab's log-in belonged to a profile that isn't here any more
+            openLogin(UI.loginNote);
+        }
+        else if (takeJustIn())
+            afterLogin(); // logged in, and the page reloaded to load that profile: the World Boss news now
         else
             maybeWhatsNew();
     });

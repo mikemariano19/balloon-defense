@@ -30,11 +30,14 @@ function saveRoster(r) { try {
 }
 catch (e) { } }
 let ACTIVE_KEY = roster().active;
+/** Set when master control deleted the active profile (profile.ts dropProfileHere): nothing is saved until the page reloads. */
+let SAVES_OFF = false;
 const store = {
     all() { return readSlot(ACTIVE_KEY); },
     /** Saves the active player's slot. Progress never goes backwards: the new copy is merged with the one already
         saved (keepProgress, profile.ts), so larger counters, tower XP and best runs are kept. `replace` skips that. */
-    save(o, replace?) { try {
+    save(o, replace?) { if (SAVES_OFF)
+        return; try {
         o.updated = Date.now();
         if (typeof thisPcId === 'function')
             o.pc = thisPcId();
@@ -87,14 +90,32 @@ function dailyConfig(date = todayStr()) {
     return { mapIdx: Math.floor(r() * MAPS.length), diffKey: r() < .55 ? 'easy' : 'medium', mode: ['standard', ...CHALLENGES][Math.floor(r() * 5)], daily: date };
 }
 function dailyDone(date = todayStr()) { return !!store.get('daily', {})[date]; }
-function dailyStreak(d = store.get('daily', {})) {
-    let n = 0;
-    const day = new Date();
-    if (!d[todayStr(day)])
+/** 5.1: there is no daily challenge on Saturdays and Sundays. Takes a Date or a 'YYYY-MM-DD' date. */
+function dailyOff(d: any = new Date()) {
+    const day = typeof d === 'string' ? new Date(d + 'T12:00:00') : d, w = day.getDay();
+    return w === 0 || w === 6;
+}
+/** The daily challenge days to show on the Daily board, newest first: today (if it's a weekday) and the weekdays before. */
+function dailyDays(n = 5, now = new Date()) {
+    const out = [], day = new Date(now.getTime());
+    for (let i = 0; out.length < n && i < 30; i++) {
+        if (!dailyOff(day))
+            out.push(todayStr(day));
         day.setDate(day.getDate() - 1);
+    }
+    return out;
+}
+/** Days in a row with a daily challenge won. Weekends have no challenge, so they are skipped and never break it. */
+function dailyStreak(d = store.get('daily', {}), now = new Date()) {
+    let n = 0;
+    const day = new Date(now.getTime()), back = () => { let i = 0; do
+        day.setDate(day.getDate() - 1);
+    while (dailyOff(day) && ++i < 7); };
+    if (dailyOff(day) || !d[todayStr(day)])
+        back();
     while (d[todayStr(day)]) {
         n++;
-        day.setDate(day.getDate() - 1);
+        back();
     }
     return n;
 }
@@ -971,6 +992,10 @@ function statsFor(type, lv, perks?) {
             s.income = Math.round(s.income * (1 + 0.03 * perks.income));
         if (perks.vault && s.vaultCap)
             s.vaultCap = Math.round(s.vaultCap * (1 + 0.10 * perks.vault));
+        if (perks.dmg && s.dmg)
+            s.dmg = s.dmg * (1 + 0.05 * perks.dmg); // Sniper Post skills (5.1)
+        if (perks.blimp && s.dmg)
+            s.bm = (s.bm || 1) * (1 + 0.10 * perks.blimp);
     }
     return s;
 }
