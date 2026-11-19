@@ -1,6 +1,6 @@
 /* Balloon Defense — game data: maps, modes, difficulties, balloons, towers, rounds, titles, avatars.
    Edit these tables to rebalance the game; no other file needs to change. */
-const VERSION = '5.1.0';
+const VERSION = '5.1.1';
 const W = 960, H = 600, TAU = Math.PI * 2;
 /* ---------- Tile grid (40 x 25 tiles of 24 px) ---------- */
 const TILE = 24, COLS = W / TILE, ROWS = H / TILE;
@@ -494,6 +494,14 @@ const SHOP = ['dart', 'tack', 'bomb', 'sniper', 'frost', 'signal', 'tesla', 'boa
 const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 /** Release notes, newest first (the News panel on the home page). */
 const NEWS = [
+    { v: '5.1.1', date: '2026-11-18', items: [
+            'A notification when a player dominates a map: every difficulty (Easy, Medium, Hard and Nightmare) cleared on it.',
+            'A notification when another player takes your medal on a stage: who took it, the medal you have now, and the points you lost (for example -1). Your own new medals show the points you gained (for example +3).',
+            'Global and Daily leaderboards show the top 5; scroll for places 6 to 10.',
+            'Ability hotkeys: Q W E R T Y U use the 1st–7th ability on the ability tray (Shift + a tower\'s number key still works). Targeting moved to G.',
+            'Hard and Nightmare on Crossroads and Figure Eight now start with the same money as every other Hard / Nightmare map.',
+            'Master control: World Boss setup. Change each boss\'s name, HP, defense, start money, lives and summon size, for every PC on the shared folder.'
+        ] },
     { v: '5.1', date: '2026-11-16', items: [
             'Log in: the game opens on a sign-in page and nothing else shows until you log in. Find your profile (search by name), then type your password. A profile without a password makes one at its first log-in. New players sign up with the registration form (live name check, password strength, show/hide password).',
             'The World Boss news opens every time you log in.',
@@ -551,7 +559,10 @@ const WB_BOSSES = [
     { id: 'wbbastion', name: 'Bastion', build: 'Slow, high defense', speed: 'Slow', def: 0.6, defTxt: 'High (takes 40% less damage)', count: 3, every: 1, summonTxt: '3 balloons each summon', cash: 10000 },
     { id: 'wbbrood', name: 'Broodmother', build: 'Slow, medium defense, large summons', speed: 'Slow', def: 0.8, defTxt: 'Medium (takes 20% less damage)', count: 4, every: 1, summonTxt: '4 balloons each summon', cash: 10000 },
     { id: 'wbswarm', name: 'Swarm King', build: 'Fast, normal defense, fast summoning', speed: 'Fast', def: 1, defTxt: 'Normal', count: 3, every: 0.6, summonTxt: '3 balloons, 40% more often', cash: 10000 }
-];
+].map(b => Object.assign(b, { hp: WB_HP, lives: WB_LIVES }));
+/** 5.1.1: the builds as shipped. Master control can change a boss's name, HP, defense, start money, lives and summon
+    size (applyWbConfig, profile.ts); "Reset to default" goes back to these. */
+const WB_DEFAULTS = WB_BOSSES.map(b => Object.assign({}, b));
 /* Four looping maps: the road comes back out next to where it went in, so the boss walks round and round. */
 /* Every World Boss road is one closed loop that starts and ends at the hole. The boss walks it round and round, passing
    over the hole; its balloons go once round and drop into the hole (taking lives). Jungle Hollow is the designer's drawing. */

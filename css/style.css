@@ -206,6 +206,7 @@ kbd{background:#2c3550;border-radius:5px;padding:1px 6px;border:1px solid var(--
 .abil.p2::after{content:"II";position:absolute;right:3px;top:1px;font-size:10px;font-weight:900;color:var(--gold)}
 .abil.ready:hover{transform:translateY(-2px)}
 .abil.sel{outline:2px solid #fff;outline-offset:1px}
+.abil kbd.hk{position:absolute;left:2px;bottom:1px;z-index:1;font:800 9px/1 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.6);border-radius:4px;padding:1px 3px;pointer-events:none}
 
 /* ---------- Tower column (wood) ---------- */
 #side{width:184px;flex-shrink:0;min-height:0;display:flex;flex-direction:column;gap:6px;padding:8px 8px 6px;overflow-y:auto;
@@ -606,6 +607,10 @@ input.tagin{width:84px!important;letter-spacing:2px}
 .mtable td.who small{font-size:10.5px;color:var(--gold);font-weight:700}
 .mtable td.who u{text-decoration:none;margin-left:5px;font-size:9.5px;font-weight:900;letter-spacing:.5px;text-transform:uppercase;color:#3b2a00;background:var(--gold);border-radius:4px;padding:0 4px;vertical-align:1px}
 .mtable td.empty{text-align:center;padding:16px 4px;cursor:default}
+.mtable .tscroll{max-height:252px;overflow-y:auto;margin-top:6px;scrollbar-width:thin;scrollbar-color:var(--line2) transparent}
+.mtable .tscroll table{margin-top:0}
+.mtable .tscroll thead th{position:sticky;top:0;z-index:1;background:var(--panel)}
+.mtable .tscroll.more{box-shadow:inset 0 -10px 8px -8px rgba(0,0,0,.45)}
 .mdot{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:4px;vertical-align:-1px;box-shadow:inset 0 -2px 0 rgba(0,0,0,.2)}
 .mdot.gold{background:#f5c518}.mdot.silver{background:#b9c0c9}.mdot.bronze{background:#c98e5a}
 .mv{font-style:normal;font-size:9.5px;font-weight:900;margin-left:4px;vertical-align:1px}
@@ -677,6 +682,7 @@ input.tagin{width:84px!important;letter-spacing:2px}
 .nrow{display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--line2);border-radius:10px;padding:8px 10px}
 .nrow.unread{border-left-color:var(--gold);background:#27304a}
 .nrow.k-won{border-left-color:#66bb6a}.nrow.k-lost{border-left-color:#ef5350}.nrow.k-wb{border-left-color:#ab47bc}.nrow.k-medal,.nrow.k-crown{border-left-color:var(--gold)}
+.nrow.k-dom{border-left-color:var(--gold)}.nrow.k-mlost{border-left-color:#ef5350}
 .nrow .grow{flex:1;min-width:0}
 .nrow b{display:block;font-size:13.5px}
 .nrow span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
@@ -712,6 +718,9 @@ input.tagin{width:84px!important;letter-spacing:2px}
 .wbtable th.l,.wbtable td.l{text-align:left}
 .wbtable td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:center}
 .wbtable td small{display:block}
+.wbsetup input{width:100%;min-width:64px;padding:5px 6px;font-size:13px;box-sizing:border-box}
+.wbsetup td.l input{min-width:120px;margin-bottom:2px}
+.wbsetup tr.now td{background:rgba(255,217,61,.07)}
 .wbmaps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .wbmaps div{display:flex;flex-direction:column;gap:3px}
 .wbmaps canvas{width:100%;height:auto;border-radius:8px;border:1px solid var(--line2)}

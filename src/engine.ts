@@ -411,18 +411,21 @@ function createGame(cfg, snap?) {
     }
     const map = wbBoss ? WB_MAPS.find(m => m.id === cfg.wbMap) || WB_MAPS[0] : MAPS[cfg.mapIdx], diff = DIFF[cfg.diffKey], mode = cfg.mode || 'standard';
     const paths = mapPaths(map, mode === 'reverse');
-    let cash = wbBoss ? wbBoss.cash : diff.cash + (TIER_CASH[map.tier] || 0) + (map.cash || 0);
+    // a map's cash penalty (Crossroads -600, Figure Eight -300) is skipped on Hard and Nightmare: starting on
+    // $50 was unplayable, so every Hard / Nightmare map starts on the same money
+    const mapCash = cfg.diffKey === 'nightmare' || cfg.diffKey === 'hard' ? Math.max(0, map.cash || 0) : (map.cash || 0);
+    let cash = wbBoss ? wbBoss.cash : diff.cash + (TIER_CASH[map.tier] || 0) + mapCash;
     if (mode === 'halfcash')
         cash = Math.round(cash / 2);
     const perks = {};
     for (const t of SHOP)
         perks[t] = perksFor(t);
-    game = { ...cfg, mode, map, paths, diff, lives: wbBoss ? WB_LIVES : diff.lives, cash, round: 0, inRound: false,
+    game = { ...cfg, mode, map, paths, diff, lives: wbBoss ? wbBoss.lives || WB_LIVES : diff.lives, cash, round: 0, inRound: false,
         spawnQ: [], spawned: 0, roundTotal: 0, roundTime: 0, balloons: [], towers: [], projs: [], fx: [], won: false, over: false,
         pops: 0, roundPops: 0, hpMult: 1, popMult: 1, time: 0, clock: 0, autoT: -1, startedAt: Date.now(), leaked: 0, deco: makeDeco(map, paths), saveT: 0,
         allowed: MODES[mode].towers || SHOP, perks, ua: !!DEV.unlockAll, cleared: [], submitted: false, shake: 0,
         abCd: {}, abMax: {}, // ability cooldowns are shared by every tower of a type (no spamming one ability)
-        wb: wbBoss ? { boss: wbBoss, k: cfg.wbWeek === undefined ? -1 : cfg.wbWeek, t: 0, summonT: 0, payT: 0, damage: 0, killed: false, ref: null, done: false } : null };
+        wb: wbBoss ? { boss: Object.assign({}, wbBoss), k: cfg.wbWeek === undefined ? -1 : cfg.wbWeek, t: 0, summonT: 0, payT: 0, damage: 0, killed: false, ref: null, done: false } : null };
     if (snap) {
         game.cleared = (snap.cleared || []).slice();
         game.deco = game.deco.filter(o => !game.cleared.includes(o.id));
@@ -583,7 +586,7 @@ function makeBalloon(type, dist, o: any = {}) {
     const fort = !!o.fort && (d.hp > 1 || type === 'lead');
     let hp = 1;
     if (d.wb)
-        hp = WB_HP;
+        hp = (game.wb && game.wb.boss.hp) || WB_HP;
     else if (d.boss)
         hp = Math.round(bossHp(game.round) * (game.mode === 'halfcash' ? 0.8 : 1));
     else if (d.hp > 1)

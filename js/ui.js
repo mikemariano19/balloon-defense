@@ -69,9 +69,10 @@ function afterGameEnd(res) {
         const mine = stageRanking(g.map.id, g.diffKey, false).find(x => x.p.me);
         rank = mine && res.best ? mine.rank : 0;
         if (rank && rank <= 3) {
-            const d = DIFF[g.diffKey];
+            const d = DIFF[g.diffKey], gain = medalGain(stageKey(g.map.id, g.diffKey, false), rank);
             addNote({ id: 'trophy-' + g.map.id + '-' + g.diffKey + '-' + res.run.at, kind: 'trophy', av: avatarOf(getId()),
-                text: 'You took ' + MEDALS[rank - 1] + ' on ' + g.map.name + ' · ' + d.name + '!', sub: (res.run.cleared ? 'Cleared · ' + res.run.livesLost + ' lives lost' : 'Round ' + res.run.round) + ' · game clock ' + fmtClock(res.run.clock) });
+                text: 'You took ' + MEDALS[rank - 1] + ' on ' + g.map.name + ' · ' + d.name + '!', sub: (gain > 0 ? '+' + gain + ' point' + (gain === 1 ? '' : 's') + ' · ' : '')
+                    + (res.run.cleared ? 'Cleared · ' + res.run.livesLost + ' lives lost' : 'Round ' + res.run.round) + ' · game clock ' + fmtClock(res.run.clock) });
         }
     }
     if (g.round >= 1)
@@ -321,6 +322,39 @@ function tickCash() {
 }
 /* ---------- Ability tray ---------- */
 let abilityKey = '';
+/** 5.1.2: ability hotkeys. Q W E R T Y U use the 1st–7th ability on the tray (left to right). Shift + a tower's
+    number key still works as a backup, so every tower type keeps a key. */
+const ABIL_KEYS = 'QWERTYU';
+function abilityTypes() { return SHOP.filter(t => abilityTower(t)).slice(0, 10); }
+/** The letter that fires this tower type's ability, or '' when it is not on the tray or past the 7th slot. */
+function abilityHotkey(type) { const i = abilityTypes().indexOf(type); return i >= 0 && i < ABIL_KEYS.length ? ABIL_KEYS[i] : ''; }
+/** Uses the ability on tray slot `i` (0-based). */
+function abilityBySlot(i) {
+    const type = abilityTypes()[i];
+    if (!type) {
+        toast('No ability on that key yet (a tier 3 upgrade gives one)', 'warn', 1800);
+        return false;
+    }
+    return abilityByKey(SHOP.indexOf(type) + 1);
+}
+/** Uses the ability of tower type number `n` (1–9). True when it fired. */
+function abilityByKey(n) {
+    const type = SHOP[n - 1], tw = type && abilityTower(type);
+    if (!tw) {
+        if (type)
+            toast(TD[type].name + ': no ability yet (a tier 3 upgrade gives one)', 'warn', 1800);
+        return false;
+    }
+    const why = abilityProblem(tw);
+    if (why) {
+        toast(TD[type].ability.name + ': ' + why, 'warn', 1500);
+        return false;
+    }
+    const ok = useAbility(tw);
+    if (ok && UI.selected)
+        renderPanel();
+    return ok;
+}
 function refreshAbilities() {
     // one button per tower type: the ability and its cooldown are shared by every tower of that type
     const list = SHOP.map(abilityTower).filter(Boolean);
@@ -336,9 +370,10 @@ function refreshAbilities() {
             const b = document.createElement('button');
             b.className = 'abil' + (abPower(t) === 2 ? ' p2' : '');
             b.dataset.type = t.type;
-            b.title = TD[t.type].ability.name + (abPower(t) === 2 ? ' (strong)' : '') + ' — ' + TD[t.type].ability.desc;
+            const hk = abilityHotkey(t.type);
+            b.title = TD[t.type].ability.name + (abPower(t) === 2 ? ' (strong)' : '') + ' — ' + TD[t.type].ability.desc + (hk ? ' [' + hk + ']' : '');
             b.appendChild(iconCanvas(t.type, 40));
-            b.insertAdjacentHTML('beforeend', '<i></i>');
+            b.insertAdjacentHTML('beforeend', '<i></i>' + (hk ? `<kbd class="hk">${hk}</kbd>` : ''));
             b.addEventListener('click', () => {
                 const tw = abilityTower(t.type);
                 if (tw) {
@@ -594,7 +629,7 @@ function renderPanel() {
       <button class="tup" data-act="tree" title="Upgrade tree: unlock tiers with XP">${CHEVRON('u')}${xpReady(t.type) ? '<span class="dot"></span>' : ''}</button><button class="i${UI.showInfo ? ' on' : ''}" data-act="info" title="Stats">i</button><button class="x" data-act="deselect" title="Close (Esc)">×</button></div>
     <div class="tpport"><canvas id="tpIcon" width="160" height="160"></canvas><div class="tpside">
       ${t.buffed ? '<span class="buffed">Boosted by a Signal Tower</span>' : ''}
-      ${usesTarget(t.s) ? '<div class="seglabel">Target <kbd>T</kbd></div><div class="seg tg">' + [['first', 'First'], ['last', 'Last'], ['close', 'Close'], ['strong', 'Strong']]
+      ${usesTarget(t.s) ? '<div class="seglabel">Target <kbd>G</kbd></div><div class="seg tg">' + [['first', 'First'], ['last', 'Last'], ['close', 'Close'], ['strong', 'Strong']]
         .map(([k, n]) => `<button data-tg="${k}" class="${t.target === k ? 'on' : ''}">${n}</button>`).join('') + '</div>' : `<div class="muted small">${sightBlocked(t.s) ? 'Needs line of sight.' : 'Hits everything in range.'}</div>`}
       <div class="lvtag">Tower level ${towerLevel(t.type)}</div></div></div>`;
     if (UI.showInfo)
@@ -603,7 +638,7 @@ function renderPanel() {
         h += `<div class="abilnote"><img class="icon" src="assets/ui/bolt.svg" alt="">${esc(d.ability.name)} belongs to another ${esc(d.name)} (one per tower type).</div>`;
     if (hasAbility(t)) {
         const why = abilityProblem(t);
-        h += `<button class="btn abilbtn${why ? '' : ' ready'}" data-act="ability"><img class="icon" src="assets/ui/bolt.svg" alt=""><span><b>${d.ability.name}${abPower(t) === 2 ? ' II' : ''}</b><small>${why || d.ability.desc}</small></span><kbd>Q</kbd></button>`;
+        h += `<button class="btn abilbtn${why ? '' : ' ready'}" data-act="ability"><img class="icon" src="assets/ui/bolt.svg" alt=""><span><b>${d.ability.name}${abPower(t) === 2 ? ' II' : ''}</b><small>${why || d.ability.desc}</small></span>${abilityHotkey(t.type) ? `<kbd>${abilityHotkey(t.type)}</kbd>` : ''}</button>`;
     }
     for (let p = 0; p < 3; p++) {
         const lv = t.lv[p];
@@ -838,8 +873,12 @@ document.addEventListener('keydown', (e) => {
     }
     if (!inGame())
         return;
-    const k = e.key;
-    if (k >= '1' && k <= '9') {
+    const k = e.key, dig = /^(Digit|Numpad)([1-9])$/.exec(e.code || '');
+    if (e.shiftKey && dig && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        abilityByKey(+dig[2]);
+    }
+    else if (k >= '1' && k <= '9') {
         const t = SHOP[+k - 1];
         if (t)
             pickShop(t);
@@ -858,9 +897,9 @@ document.addEventListener('keydown', (e) => {
     }
     else if (k === 'm' || k === 'M')
         toggleSound();
-    else if ((k === 'q' || k === 'Q') && UI.selected) {
-        if (useAbility(UI.selected))
-            renderPanel();
+    else if (k.length === 1 && ABIL_KEYS.includes(k.toUpperCase()) && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        abilityBySlot(ABIL_KEYS.indexOf(k.toUpperCase()));
     }
     else if (k === 'Escape') {
         if (UI.shop || UI.selected || UI.selScenery) {
@@ -879,7 +918,7 @@ document.addEventListener('keydown', (e) => {
     }
     else if ((k === 'Delete' || k === 'Backspace') && UI.selected)
         askSell(UI.selected);
-    else if ((k === 't' || k === 'T') && UI.selected && usesTarget(UI.selected.s)) {
+    else if ((k === 'g' || k === 'G') && UI.selected && usesTarget(UI.selected.s)) {
         const m = ['first', 'last', 'close', 'strong'];
         UI.selected.target = m[(m.indexOf(UI.selected.target) + 1) % 4];
         renderPanel();
@@ -1251,8 +1290,9 @@ function openHelp(tab) {
       <span><kbd>1</kbd>–<kbd>9</kbd></span><span>Pick a tower</span>
       <span><kbd>Space</kbd> / <kbd>F</kbd></span><span>Start round / change speed</span>
       <span><kbd>,</kbd> <kbd>.</kbd> <kbd>/</kbd></span><span>Upgrade path 1 / 2 / 3</span>
-      <span><kbd>Q</kbd></span><span>Use the selected tower's ability</span>
-      <span><kbd>T</kbd></span><span>Change targeting</span>
+      <span><kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd></span><span>Use the 1st–7th ability on the ability tray (the key is shown on each button)</span>
+      <span><kbd>Shift</kbd> + <kbd>1</kbd>–<kbd>9</kbd></span><span>Use that tower type's ability (backup)</span>
+      <span><kbd>G</kbd></span><span>Change targeting</span>
       <span><kbd>Del</kbd></span><span>Sell selected tower</span>
       <span><kbd>M</kbd></span><span>Sound on / off</span>
       <span><kbd>\`</kbd></span><span>Boss key: hide the game instantly</span>
@@ -2001,8 +2041,8 @@ function globalTable(players) {
       <td class="rk"><b>${x.rank}</b>${moveTag(mv[x.p.id.uid])}</td>${whoCell(x.p, esc(titleOf(x.p).name))}
       <td class="n">${x.gold}</td><td class="n">${x.silver}</td><td class="n">${x.bronze}</td><td class="n tot">${x.points}</td></tr>`).join('');
     return `<div class="mtable"><div class="mthead"><h3><img src="assets/ui/trophy.svg" alt="">Global · Top ${GLOBAL_SIZE}</h3><span class="muted small">Points: gold 3 · silver 2 · bronze 1</span></div>
-    <table><thead><tr><th></th><th class="l">Top ${GLOBAL_SIZE} players</th><th><i class="mdot gold"></i>Gold</th><th><i class="mdot silver"></i>Silver</th><th><i class="mdot bronze"></i>Bronze</th><th>Points</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="6" class="empty muted small">Nobody has a medal yet. Finish in the top 3 of any stage to get one.</td></tr>`}</tbody></table>
+    <div class="tscroll"><table><thead><tr><th></th><th class="l">Top ${GLOBAL_SIZE} players</th><th><i class="mdot gold"></i>Gold</th><th><i class="mdot silver"></i>Silver</th><th><i class="mdot bronze"></i>Bronze</th><th>Points</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="6" class="empty muted small">Nobody has a medal yet. Finish in the top 3 of any stage to get one.</td></tr>`}</tbody></table></div>
     <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${list.length} · ${mine.points} pts` : 'Finish in the top 3 of a stage board to rank'}${CROWN_UID ? ' · #1 wears the crown' : ''}</div></div>`;
 }
 /** Daily Challenge Top 10 for one day (today, or up to 6 days back): best performance first. */
@@ -2018,18 +2058,37 @@ function dailyTable(players) {
     return `<div class="mtable"><div class="mthead"><h3><img src="assets/ui/calendar.svg" alt="">Daily · Top ${DAILY_SIZE}</h3>
       <span class="daynav"><button class="iconbtn sm" data-act="dailyday" data-d="-1" ${idx >= days.length - 1 ? 'disabled' : ''} title="Day before">◀</button><b>${label}</b><button class="iconbtn sm" data-act="dailyday" data-d="1" ${idx <= 0 ? 'disabled' : ''} title="Next day">▶</button></span></div>
     <p class="muted small dsub">${esc(m.name)} · ${DIFF[cfg.diffKey].name} · ${MODES[cfg.mode].name}</p>
-    <table><thead><tr><th></th><th class="l">Top ${DAILY_SIZE} players</th><th>Result</th><th>Lives</th><th>Time</th></tr></thead>
-    <tbody>${rows || `<tr><td colspan="5" class="empty muted small">Nobody has played this daily challenge yet.</td></tr>`}</tbody></table>
+    <div class="tscroll"><table><thead><tr><th></th><th class="l">Top ${DAILY_SIZE} players</th><th>Result</th><th>Lives</th><th>Time</th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="5" class="empty muted small">Nobody has played this daily challenge yet.</td></tr>`}</tbody></table></div>
     <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${list.length}` : !isToday ? 'You didn\'t play this day' : 'Play today\'s daily challenge to rank'} · wins first, then most lives, then fastest${dailyOff() ? ' · no daily challenge at the weekend' : ''}</div></div>`;
 }
+/** 5.1.1: Global and Daily show the top 5; places 6–10 scroll. The box is cut just under the 5th row (measured, since
+    row heights follow the font); while the home page is hidden the CSS height is used. */
+const TOP_SHOWN = 5;
+function fitTopBoards() {
+    requestAnimationFrame(() => document.querySelectorAll('#topBoards .tscroll').forEach((box) => {
+        const rows = box.querySelectorAll('tbody tr');
+        box.classList.toggle('more', rows.length > TOP_SHOWN);
+        if (rows.length <= TOP_SHOWN) {
+            box.style.maxHeight = '';
+            return;
+        }
+        const top = box.getBoundingClientRect().top, cut = rows[TOP_SHOWN - 1].getBoundingClientRect().bottom - top + box.scrollTop;
+        if (cut > 0)
+            box.style.maxHeight = Math.ceil(cut) + 'px';
+    }));
+}
+window.addEventListener('resize', fitTopBoards);
 function renderBoards() {
     const ua = false, players = allPlayers();
     refreshCrown(players);
     renderPlayers(players);
     renderProfileChip();
     $('topBoards').innerHTML = globalTable(players) + dailyTable(players);
+    fitTopBoards();
     renderWorldBoss(players);
     checkCrownNote();
+    checkBoardNotes(players);
     $('boardNote').textContent = 'Tier boards: top ' + BOARD_SIZE + (Share.connected() ? ' (this PC and the shared folder)' : ' on this PC');
     $('boards').innerHTML = TIERS.map(t => {
         const board = tierBoard(t.id, ua, players), stages = MAPS.filter(m => m.tier === t.id).length * Object.keys(DIFF).length;
@@ -2381,8 +2440,8 @@ function wbInfoHTML() {
       <li>Once a week, everyone fights the same <b>World Boss</b> on the same map. The boss and the map are picked at random each week, never the same pair twice in a row.</li>
       <li>The fight is open every <b>Friday from 7:30 AM to 5:00 PM Philippine time</b>. A run still going at 5:00 PM ends, and its damage counts.</li>
       <li>At <b>5:01 PM</b> the <b>World Boss Champion</b> (the most damage) is announced to every player, even in the middle of a game (it pauses). Everyone also gets a notification with the top 3.</li>
-      <li>You start with <b>${WB_LIVES.toLocaleString()} lives</b> and the boss's start money. Press <b>PLAY</b> to bring the boss in.</li>
-      <li>The boss is 2.5 times the size of the Colossus and has <b>${WB_HP.toLocaleString()} HP</b>. It comes out of the hole and walks the loop round and round, and never takes lives. Its balloons go once round and drop into the hole: each one that gets there takes lives.</li>
+      <li>You start with the boss's lives (<b>${p.boss.lives.toLocaleString()}</b> this week) and its start money. Press <b>PLAY</b> to bring the boss in.</li>
+      <li>The boss is 2.5 times the size of the Colossus and has <b>${p.boss.hp.toLocaleString()} HP</b> this week (each boss's HP is in the table below). It comes out of the hole and walks the loop round and round, and never takes lives. Its balloons go once round and drop into the hole: each one that gets there takes lives.</li>
       <li>It summons balloons every <b>15 seconds</b>, every <b>10 seconds</b> after 10 minutes, and every <b>5 seconds</b> after 20 minutes. They get <b>1% stronger every minute</b> (about 1.1x at 10 minutes, 1.2x at 20, 1.35x at 30), and tougher kinds come in over time: ceramics from 18 minutes, blimps from 24, Brute Blimps from 32. Balloons that reach the end take lives.</li>
       <li>Every 30 seconds is a <b>payday</b>: +$${WB_PAY_BONUS}, Gold Mine income, and XP for you and your towers.</li>
       <li>Your <b>score is the damage you deal</b>. Your best run of the day counts on the World Boss board, at the bottom of the leaderboards. If you pop the boss, you also get ${WB_KILL_BONUS.toLocaleString()} points per life left.</li>
@@ -2390,8 +2449,8 @@ function wbInfoHTML() {
       <li>World Boss runs don't count on the tier or stage boards, and they can't be saved half-way: your damage so far always counts.</li>
     </ul>
     <h3>The four bosses</h3>
-    <table class="wbtable"><thead><tr><th></th><th class="l">Boss</th><th>Speed</th><th>Defense</th><th>Summons</th><th>Start money</th></tr></thead>
-    <tbody>${WB_BOSSES.map(b => `<tr><td>${wbImg(b.id, 'wbart sm')}</td><td class="l"><b>${esc(b.name)}</b><small class="muted">${esc(b.build)}</small></td><td>${b.speed}</td><td>${esc(b.defTxt)}</td><td>${esc(b.summonTxt)}</td><td>${money(b.cash)}</td></tr>`).join('')}</tbody></table>
+    <table class="wbtable"><thead><tr><th></th><th class="l">Boss</th><th>Speed</th><th>Defense</th><th>HP</th><th>Summons</th><th>Lives</th><th>Start money</th></tr></thead>
+    <tbody>${WB_BOSSES.map(b => `<tr><td>${wbImg(b.id, 'wbart sm')}</td><td class="l"><b>${esc(b.name)}</b><small class="muted">${esc(b.build)}</small></td><td>${b.speed}</td><td>${esc(b.defTxt)}</td><td>${b.hp.toLocaleString()}</td><td>${esc(b.summonTxt)}</td><td>${b.lives.toLocaleString()}</td><td>${money(b.cash)}</td></tr>`).join('')}</tbody></table>
     <h3>The four maps</h3><div class="wbmaps">${WB_MAPS.map(m => `<div><canvas data-wbmap="${m.id}"></canvas><b>${esc(m.name)}</b><span class="muted small">${esc(m.desc)}</span></div>`).join('')}</div>`;
 }
 /** Draws the small World Boss map previews inside an element. */
@@ -2415,7 +2474,7 @@ function renderWorldBoss(players = allPlayers()) {
     el.innerHTML = `<div class="wbbanner" style="--wbc:${BT[p.boss.id].col}">
       <div class="wbhead"><span class="wbtag">WORLD BOSS</span><span class="wbtimer" id="wbTimer">${wbTimerHTML()}</span></div>
       <div class="wbbody">${wbImg(p.boss.id, 'wbart')}<div class="wbtxt"><h3>${esc(p.boss.name)}</h3><div class="wbbuild">${esc(p.boss.build)}</div>
-        <div class="wbmeta"><span>Map: <b>${esc(p.map.name)}</b></span><span>HP <b>${WB_HP.toLocaleString()}</b></span><span>Start <b>${money(p.boss.cash)}</b> · <b>${WB_LIVES.toLocaleString()}</b> lives</span></div>
+        <div class="wbmeta"><span>Map: <b>${esc(p.map.name)}</b></span><span>HP <b>${p.boss.hp.toLocaleString()}</b></span><span>Start <b>${money(p.boss.cash)}</b> · <b>${p.boss.lives.toLocaleString()}</b> lives</span></div>
         <div class="row left">${open ? '<button class="btn primary big" data-act="wbfight">Fight</button>' : '<button class="btn big" disabled>Opens ' + esc(wbOpensTxt()) + '</button>'}</div></div></div>
       <div class="wbfoot muted small">Every Friday, 7:30 AM to 5:00 PM (PH time) · the Champion is announced at 5:01 PM and wears the World Boss Legend border for 7 days${champ ? ' · Champion: <b>' + esc(champ.id.name) + '</b>' : ''}</div></div>
     <div class="mtable wbboard"><div class="mthead"><h3><img src="assets/ui/trophy.svg" alt="">World Boss · ${open ? 'Top damage today' : 'Last event'}</h3></div>
@@ -2526,7 +2585,7 @@ function openWbNews() {
           <div class="wbn-when">${open ? 'Open until 5:00 PM today (PH time)' : 'Fri 7:30 AM – 5:00 PM (PH time) · ' + esc(wbOpensTxt()) + ' your time'}</div>
         </div>
       </div>
-      <div class="wbn-stats">${stat('HP', WB_HP.toLocaleString())}${stat('Speed', esc(p.boss.speed))}${stat('Defense', esc(p.boss.defTxt.replace(/ \(.*\)/, '')))}${stat('Summons', esc(p.boss.summonTxt))}${stat('Lives', WB_LIVES.toLocaleString())}${stat('Start', money(p.boss.cash))}</div>
+      <div class="wbn-stats">${stat('HP', p.boss.hp.toLocaleString())}${stat('Speed', esc(p.boss.speed))}${stat('Defense', esc(p.boss.defTxt.replace(/ \(.*\)/, '')))}${stat('Summons', esc(p.boss.summonTxt))}${stat('Lives', p.boss.lives.toLocaleString())}${stat('Start', money(p.boss.cash))}</div>
       ${today ? `<div class="wbn-today">${today}</div>` : ''}
       ${c ? `<div class="wbn-champ">${avatarSVG(avatarOf(c.p.id), 46)}<div><small>Reigning champion</small><b>${esc(c.p.id.name)}</b><span>${c.d.toLocaleString()} damage on ${esc(c.boss.name)}</span></div></div>` : ''}
       <div class="wbn-actions"><button class="btn" data-act="wbinfo">How it works</button>${open ? '<button class="btn" data-act="wbnews-close">Later</button><button class="btn primary big wbn-fight" data-act="wbnews-fight">⚔ Fight now</button>' : '<button class="btn primary big" data-act="wbnews-close">Got it</button>'}</div>
@@ -2563,7 +2622,7 @@ function noteIcon(x) {
 /** 5.1: notifications about a win, a medal, a top 3 place, the crown or a World Boss result carry a trophy. */
 function noteTrophy(x) {
     const k = x.kind, id = String(x.id || '');
-    if (k === 'won' || k === 'medal' || k === 'crown' || k === 'trophy' || (k === 'wb' && id.startsWith('wbend-'))) {
+    if (k === 'won' || k === 'medal' || k === 'crown' || k === 'trophy' || k === 'dom' || (k === 'wb' && id.startsWith('wbend-'))) {
         const m = /\b(gold|silver|bronze)\b/i.exec(x.text || ''), col = m ? m[1].toLowerCase() : 'gold';
         return `<img class="ntrophy ${col}" src="assets/ui/trophy.svg" alt="Trophy" title="Trophy">`;
     }
@@ -2834,7 +2893,53 @@ function renderMaster(msg) {
     <p class="muted small" style="margin:0 0 8px"><b>Reset password</b>: the player makes a new password at their next log-in. <b>Delete account</b>: removed from every PC (its backups stay, so it can be restored). <b>Restore account</b>: brought back from its backups, with its password.</p>
     ${msg ? `<div class="mmsg">${esc(msg)}</div>` : ''}
     <div class="histwrap mtable"><table class="mastertable"><tbody>${list.map(row).join('') || '<tr><td class="muted">No accounts yet.</td></tr>'}</tbody></table></div>
-    <div class="row" style="justify-content:space-between"><button class="btn" data-act="master-changepw">Change master password</button><button class="btn primary" data-act="master-close">Done</button></div>`, 'wide');
+    <div class="row" style="justify-content:space-between"><span><button class="btn" data-act="master-changepw">Change master password</button> <button class="btn" data-act="master-wb">⚔ World Boss setup</button></span><button class="btn primary" data-act="master-close">Done</button></div>`, 'wide');
+}
+/** 5.1.1: World Boss setup in master control: each boss's name, HP, defense, start money, lives and summon size.
+    Saved with the master control data, so every PC on the shared folder uses it. Runs already going keep their build. */
+function renderMasterWb(msg, err) {
+    const cur = wbPick(wbWeek()).boss.id, num = (id, f, v, min, max, step = 1) => `<input type="number" data-boss="${id}" data-f="${f}" value="${v}" min="${min}" max="${max}" step="${step}">`;
+    const row = (b) => {
+        const d = WB_DEFAULTS.find(x => x.id === b.id), changed = ['name', 'hp', 'def', 'cash', 'lives', 'count'].some(k => b[k] !== d[k]);
+        return `<tr${b.id === cur ? ' class="now"' : ''}><td>${wbImg(b.id, 'wbart sm')}</td>
+        <td class="l"><input type="text" data-boss="${b.id}" data-f="name" value="${esc(b.name)}" maxlength="20" placeholder="${esc(d.name)}"><small class="muted">${b.id === cur ? '<b class="okc">This week</b> · ' : ''}${esc(d.speed)} · default ${esc(d.name)}${changed ? ' · <b>changed</b>' : ''}</small></td>
+        <td>${num(b.id, 'hp', b.hp, WB_LIMITS.hp[0], WB_LIMITS.hp[1], 1000)}</td>
+        <td>${num(b.id, 'def', Math.round(b.def * 100), WB_LIMITS.def[0] * 100, WB_LIMITS.def[1] * 100, 5)}</td>
+        <td>${num(b.id, 'cash', b.cash, WB_LIMITS.cash[0], WB_LIMITS.cash[1], 500)}</td>
+        <td>${num(b.id, 'lives', b.lives, WB_LIMITS.lives[0], WB_LIMITS.lives[1], 100)}</td>
+        <td>${num(b.id, 'count', b.count, WB_LIMITS.count[0], WB_LIMITS.count[1])}</td>
+        <td><button class="btn small" data-act="master-wbdef" data-boss="${b.id}" title="Put this boss back to its default build">Default</button></td></tr>`;
+    };
+    const cfg = adminData().wb;
+    openModal('master', `<div class="cardhead"><h2>World Boss setup</h2><button class="iconbtn x" data-act="master-back"><img src="assets/ui/close.svg" alt="Close"></button></div>
+    <p class="muted small" style="margin:0 0 8px"><b>Damage taken</b>: 100% is normal defense, 60% takes 40% less damage, 150% takes 50% more. <b>Summon</b>: balloons per summon.
+      Changes reach every PC on the shared folder; runs already going keep the build they started with.${cfg ? ' Last saved ' + agoShort(cfg.at) + '.' : ''}</p>
+    ${Share.connected() ? '' : '<div class="warnline">The shared folder isn\'t connected: this setup is only kept on this PC.</div>'}
+    ${msg ? `<div class="mmsg">${esc(msg)}</div>` : ''}<div class="err" id="wbErr">${err ? esc(err) : ''}</div>
+    <div class="histwrap"><table class="wbtable wbsetup"><thead><tr><th></th><th class="l">Name</th><th>HP</th><th>Damage taken %</th><th>Start money</th><th>Lives</th><th>Summon</th><th></th></tr></thead>
+    <tbody>${WB_BOSSES.map(row).join('')}</tbody></table></div>
+    <div class="row" style="justify-content:space-between"><button class="btn danger" data-act="master-wbreset">Reset all to default</button>
+      <span><button class="btn" data-act="master-back">Back</button> <button class="btn primary" data-act="master-wbsave">Save</button></span></div>`, 'wide');
+}
+/** The setup form as a config ({ at, bosses }), or an error message. `only` puts one boss back to its defaults. */
+function readMasterWb(only) {
+    const bosses = {};
+    for (const d of WB_DEFAULTS) {
+        if (only === d.id)
+            continue;
+        const x = {}, get = (f) => { const el = document.querySelector(`#modal [data-boss="${d.id}"][data-f="${f}"]`); return el ? el.value : ''; };
+        x.name = String(get('name')).replace(/\s+/g, ' ').trim();
+        if (!x.name)
+            return d.name + ': type a name';
+        for (const f of ['hp', 'def', 'cash', 'lives', 'count']) {
+            const raw = String(get(f)).trim(), v = +raw, [lo, hi] = WB_LIMITS[f].map(n => f === 'def' ? n * 100 : n);
+            if (raw === '' || !isFinite(v) || v < lo || v > hi)
+                return x.name + ': ' + { hp: 'HP', def: 'damage taken', cash: 'start money', lives: 'lives', count: 'summon size' }[f] + ' must be ' + lo.toLocaleString() + ' to ' + hi.toLocaleString();
+            x[f] = f === 'def' ? v / 100 : v;
+        }
+        bosses[d.id] = x;
+    }
+    return { at: Date.now(), bosses };
 }
 function masterAction(a, b) {
     if (a === 'master')
@@ -2879,6 +2984,27 @@ function masterAction(a, b) {
     else if (a === 'master-back') {
         UI.masterChange = false;
         renderMaster();
+    }
+    else if (a === 'master-wb')
+        renderMasterWb();
+    else if (a === 'master-wbsave' || a === 'master-wbdef' || a === 'master-wbreset') {
+        if (a === 'master-wbreset' && !b.dataset.armed) {
+            b.dataset.armed = '1';
+            b.textContent = 'Click again to reset all four';
+            return;
+        }
+        const one = a === 'master-wbdef' ? b.dataset.boss : '';
+        const cfg = a === 'master-wbreset' ? { at: Date.now(), bosses: {} } : readMasterWb(one);
+        if (typeof cfg === 'string') {
+            $('wbErr').textContent = cfg;
+            return;
+        }
+        Share.saveAdmin({ master: null, resets: {}, wb: cfg }).then(() => {
+            renderMasterWb(a === 'master-wbreset' ? 'All four bosses are back to their default builds.'
+                : one ? WB_BOSSES.find(x => x.id === one).name + ' is back to its default build.' : 'World Boss setup saved' + (Share.connected() ? ' for every PC.' : ' on this PC.'));
+            if ($('menu').classList.contains('on'))
+                renderBoards();
+        });
     }
     else if (a === 'master-reset' && acc) {
         if (!b.dataset.armed) {
@@ -2962,6 +3088,32 @@ function checkCrownNote() {
     const pl = allPlayers().find(p => p.id.uid === CROWN_UID);
     if (pl)
         addNote({ id: 'crown-' + CROWN_UID + '-' + todayStr(), kind: 'crown', av: avatarOf(pl.id), text: (pl.me ? 'You are' : pl.id.name + ' is') + ' the new #1 on the Global Top 10!', sub: 'The Global #1 wears the crown.' });
+}
+/** 5.1.1: someone dominated a map (every difficulty cleared), or took one of my medals. A notification and a pop-up. */
+function checkBoardNotes(players = allPlayers()) {
+    if (!loggedIn())
+        return;
+    const dom = dominationNotes(players, store.get('domSeen', null)), lost = medalLostNotes(players, store.get('medalSeen', null));
+    for (const [k, v] of [['domSeen', dom.seen], ['medalSeen', lost.seen]])
+        if (stableJSON(v) !== stableJSON(store.get(k, null)))
+            store.set(k, v); // only when it changed: every save is copied to the shared folder
+    if (SETTINGS.notify === false && !dom.notes.some(n => n.me))
+        dom.notes = [];
+    for (const n of dom.notes.concat(lost.notes))
+        if (addNote(n))
+            popBoardNote(n);
+}
+function popBoardNote(n) {
+    const good = n.kind === 'dom';
+    if (inGame()) {
+        toast((good ? '🏆 ' : '') + n.text + ' · ' + n.sub, good ? 'good' : 'bad', 6000);
+        return;
+    }
+    const el = document.createElement('div');
+    el.className = 'note ' + (good ? 'won' : 'lost');
+    el.innerHTML = `${n.av ? avatarSVG(n.av, 40) : ''}<div class="grow"><b>${esc(n.text)}</b><div class="nstats"><span>${esc(n.sub)}</span></div></div>
+      ${good ? '<img class="ntrophy" src="assets/ui/trophy.svg" alt="Trophy">' : ''}<button class="x" title="Dismiss">×</button>`;
+    pushNote(el, 9000);
 }
 /* ---------- Main loop ---------- */
 let last = performance.now();

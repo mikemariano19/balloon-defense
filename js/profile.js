@@ -115,7 +115,56 @@ function cleanAdmin(o) {
     for (const [k, v] of Object.entries(obj(o.resets)))
         if (/^[a-z0-9]{6,20}$/.test(k) && +v > 0)
             resets[k] = +v;
-    return { master: typeof m.h === 'string' && typeof m.s === 'string' ? { s: m.s, h: m.h, at: +m.at || 0 } : null, resets };
+    return { master: typeof m.h === 'string' && typeof m.s === 'string' ? { s: m.s, h: m.h, at: +m.at || 0 } : null, resets, wb: cleanWbConfig(o.wb) };
+}
+/* ---------- World Boss builds from master control (5.1.1) ----------
+   { at, bosses: { wbgale: { name, hp, def, cash, lives, count }, ... } }: only the fields that differ from WB_DEFAULTS.
+   Kept with the master control data, so every PC on the shared folder fights the same boss. The newest save wins. */
+const WB_LIMITS = { hp: [1000, 10000000], def: [0.1, 3], cash: [0, 1000000], lives: [1, 100000], count: [1, 10] };
+function cleanWbConfig(o) {
+    if (!o || typeof o !== 'object' || Array.isArray(o) || !(+o.at > 0))
+        return null;
+    const bosses = {};
+    for (const d of WB_DEFAULTS) {
+        const x = o.bosses && o.bosses[d.id];
+        if (!x || typeof x !== 'object')
+            continue;
+        const b = {};
+        const name = typeof x.name === 'string' ? x.name.replace(/\s+/g, ' ').trim().slice(0, 20) : '';
+        if (name && name !== d.name)
+            b.name = name;
+        for (const [k, [lo, hi]] of Object.entries(WB_LIMITS)) {
+            const v = +x[k];
+            if (x[k] === undefined || x[k] === null || x[k] === '' || !isFinite(v))
+                continue;
+            const c = k === 'def' ? Math.round(Math.max(lo, Math.min(hi, v)) * 100) / 100 : Math.round(Math.max(lo, Math.min(hi, v)));
+            if (c !== d[k])
+                b[k] = c;
+        }
+        if (Object.keys(b).length)
+            bosses[d.id] = b;
+    }
+    return { at: +o.at, bosses };
+}
+/** 'Normal', 'High (takes 40% less damage)', 'Weak (takes 50% more damage)'. `def` = share of damage taken. */
+function wbDefTxt(def) {
+    const pct = Math.round((1 - def) * 100);
+    return pct === 0 ? 'Normal' : pct < 0 ? 'Weak (takes ' + -pct + '% more damage)' : (pct >= 40 ? 'High' : pct >= 20 ? 'Medium' : 'Low') + ' (takes ' + pct + '% less damage)';
+}
+/** Puts the master control builds on WB_BOSSES (and the boss balloon names). Without a config: the defaults. */
+function applyWbConfig(cfg = adminData().wb) {
+    WB_BOSSES.forEach((b, i) => {
+        const d = WB_DEFAULTS[i], x = (cfg && cfg.bosses && cfg.bosses[d.id]) || {};
+        Object.assign(b, d, x);
+        if (x.def !== undefined)
+            b.defTxt = wbDefTxt(b.def);
+        if (x.count !== undefined)
+            b.summonTxt = b.count + ' balloon' + (b.count === 1 ? '' : 's') + (b.every < 1 ? ', ' + Math.round((1 - b.every) * 100) + '% more often' : ' each summon');
+        if (x.def !== undefined || x.count !== undefined)
+            b.build = b.speed + ', ' + b.defTxt.replace(/ \(.*\)/, '').toLowerCase() + ' defense' + (b.count > 3 ? ', large summons' : '') + (b.every < 1 ? ', fast summoning' : '');
+        if (BT[d.id])
+            BT[d.id].name = b.name;
+    });
 }
 function adminData() {
     try {
@@ -130,6 +179,7 @@ function saveAdminData(o) {
         localStorage.setItem(ADMIN_KEY, JSON.stringify(cleanAdmin(o)));
     }
     catch (e) { }
+    applyWbConfig();
 }
 /** Two copies of the master control data merged: the newer master password, and the latest reset of each profile. */
 function mergeAdmin(a, b) {
@@ -139,7 +189,8 @@ function mergeAdmin(a, b) {
     for (const [k, v] of Object.entries(b.resets))
         resets[k] = Math.max(+resets[k] || 0, +v);
     const master = !a.master ? b.master : !b.master ? a.master : (b.master.at > a.master.at ? b.master : a.master);
-    return { master, resets };
+    const wb = !a.wb ? b.wb : !b.wb ? a.wb : (b.wb.at > a.wb.at ? b.wb : a.wb);
+    return { master, resets, wb };
 }
 function resetAt(uid) { return +adminData().resets[uid] || 0; }
 /** True when this profile has a password that still counts (set after the last reset from master control). */
@@ -861,6 +912,78 @@ function medalsOf(key, players = allPlayers()) {
     const m = medalTable(players).get(key);
     return m ? { gold: m.gold, silver: m.silver, bronze: m.bronze } : { gold: 0, silver: 0, bronze: 0 };
 }
+/* ---------- 5.1.1: map and medal notifications ----------
+   Both compare the boards with what this profile saw last time (`seen`, kept in its save). The first look only
+   remembers, so old results never flood the bell. */
+/** Maps a player dominates: every difficulty cleared on Standard. */
+function dominatedMaps(p) {
+    return MAPS.filter(m => Object.keys(DIFF).every(k => { const r = p.runs && p.runs[stageKey(m.id, k, false)]; return !!(r && r.cleared); })).map(m => m.id);
+}
+/** New dominations since `seen` ({ uid: [mapId] }, or null on the first look). Returns { notes, seen }. */
+function dominationNotes(players, seen) {
+    const now = {}, notes = [];
+    for (const p of players) {
+        const uid = p.id && p.id.uid;
+        if (!uid)
+            continue;
+        now[uid] = dominatedMaps(p);
+        if (!seen)
+            continue;
+        for (const id of now[uid])
+            if (!(seen[uid] || []).includes(id)) {
+                const m = MAPS.find(x => x.id === id);
+                notes.push({ id: 'dom-' + uid + '-' + id, kind: 'dom', av: avatarOf(p.id), me: !!p.me,
+                    text: (p.me ? 'You dominate ' : p.id.name + ' dominates ') + 'the ' + m.name + ' map!',
+                    sub: 'Cleared every difficulty: ' + Object.keys(DIFF).map(k => DIFF[k].name).join(', ') });
+            }
+    }
+    // keep what was seen of players who aren't listed right now (a file that didn't load this time)
+    return { notes, seen: Object.assign({}, seen || {}, now) };
+}
+/** My medals on the Standard stage boards: { stageKey: { r: rank, above: [uids ranked above me] } }. */
+function myMedalSpots(players) {
+    const out = {};
+    for (const map of MAPS)
+        for (const k of Object.keys(DIFF)) {
+            const list = stageRanking(map.id, k, false, players), mine = list.find(x => x.p.me);
+            if (mine && mine.rank <= 3)
+                out[stageKey(map.id, k, false)] = { r: mine.rank, above: list.slice(0, mine.rank - 1).map(x => x.p.id.uid) };
+        }
+    return out;
+}
+function medalPts(rank) { return rank >= 1 && rank <= 3 ? MEDAL_POINTS[MEDALS[rank - 1]] : 0; }
+/** Someone took one of my medals since `seen` (myMedalSpots, or null on the first look): who, my medal now, and the
+    points I lost. Returns { notes, seen }. */
+function medalLostNotes(players, seen) {
+    const now = myMedalSpots(players), notes = [], me = players.find(p => p.me);
+    if (!seen || !me)
+        return { notes, seen: now };
+    for (const [key, old] of Object.entries(seen)) {
+        const cur = now[key];
+        if (cur && cur.r <= old.r)
+            continue;
+        const [mapId, diff] = key.split(':'), map = MAPS.find(m => m.id === mapId);
+        if (!map || !DIFF[diff])
+            continue;
+        const list = stageRanking(mapId, diff, false, players), mine = list.find(x => x.p.me);
+        if (!mine)
+            continue; // my own run is gone (not taken by anyone)
+        const takers = list.filter(x => x.rank < mine.rank && !old.above.includes(x.p.id.uid)).sort((a, b) => (+b.run.at || 0) - (+a.run.at || 0));
+        if (!takers.length)
+            continue;
+        const t = takers[0], lost = MEDALS[old.r - 1], has = cur ? MEDALS[cur.r - 1] : '', d = medalPts(cur ? cur.r : 0) - medalPts(old.r);
+        notes.push({ id: 'mlost-' + key + '-' + t.p.id.uid + '-' + (+t.run.at || 0), kind: 'mlost', av: avatarOf(t.p.id), taker: t.p.id.name,
+            text: t.p.id.name + ' took your ' + lost + ' medal on ' + map.name + ' · ' + DIFF[diff].name + '!',
+            sub: (has ? 'Your medal now: ' + has : 'You have no medal there now') + ' · ' + d + ' point' + (Math.abs(d) === 1 ? '' : 's') });
+    }
+    return { notes, seen: now };
+}
+/** Medal points a run of mine on one stage just gained, against what this profile saw before the game (+3 for a new
+    gold, +1 for silver to gold...). Call it before the boards are looked at again. */
+function medalGain(key, rank) {
+    const seen = store.get('medalSeen', null), old = seen && seen[key] ? seen[key].r : 0;
+    return medalPts(rank) - medalPts(old);
+}
 /* ---------- Titles & borders ---------- */
 function unlockedTitles() { return TITLES.filter(t => PROFILE.pops >= t.pops); }
 function titleById(id) { return TITLES.find(t => t.id === id) || TITLES[0]; }
@@ -1066,3 +1189,5 @@ function backupFileText() {
 }
 function backupDue() { return PROFILE.games > 0 && PROFILE.games - (PROFILE.backupAt || 0) >= 5; }
 function markBackedUp() { PROFILE.backupAt = PROFILE.games; saveProfile(); }
+/* 5.1.1: the World Boss builds set in master control (this browser's copy; the shared folder copy is merged at sync). */
+applyWbConfig();

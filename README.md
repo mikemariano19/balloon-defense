@@ -1,6 +1,18 @@
-# Balloon Defense 5.1
+# Balloon Defense 5.1.1
 
 An offline browser tower defense game. No install: double-click `index.html`.
+
+What's new in 5.1.1:
+- **Map domination** notification when a player clears every difficulty of a map (`dominationNotes`, `src/profile.ts`).
+- **Medal taken** notification: who took your medal on which stage, your medal now and the points lost
+  (`medalLostNotes`). Your own new medals show the points gained (`medalGain`). Both remember what this profile saw
+  last (`domSeen` / `medalSeen` in the save), so the first look never floods the bell.
+- Global and Daily boards show the top 5; places 6–10 scroll (`fitTopBoards`, `src/ui.ts`).
+- **Ability hotkeys**: Q W E R T Y U use the 1st–7th ability on the ability tray (`abilityBySlot`); Shift + a tower's number key is a backup (`abilityByKey`). Targeting is G.
+- **Hard / Nightmare money**: map cash penalties are skipped on Hard and Nightmare, so Crossroads and Figure Eight no longer start on $50 / $350.
+- **World Boss setup** in Master control: name, HP, defense, start money, lives and summon size per boss. Kept in
+  `admin.json` with the master password (`cleanWbConfig` / `applyWbConfig`); the newest save wins on every PC.
+  A run already going keeps the build it started with.
 
 What's new in 5.1:
 - **Log in** (`openLogin`, `src/ui.ts`): every visit starts by picking a profile and typing its password. Passwords are
