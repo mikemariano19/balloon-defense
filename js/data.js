@@ -147,7 +147,15 @@ const SNIPER_PERKS = [
     { id: 'blimp', name: 'Blimp hunter', per: '+10% damage to blimps', max: 3 },
     { id: 'cd', name: 'Ability recharge', per: '+5% ability recharge', max: 4 }
 ];
-function perkList(type) { return type === 'mine' ? MINE_PERKS : type === 'sniper' ? SNIPER_PERKS : PERKS; }
+/** The Signal Tower doesn't attack, so attack speed and pierce did nothing for it: its skills boost the aura instead (5.1.2). */
+const SIGNAL_PERKS = [
+    { id: 'range', name: 'Aura size', per: '+2% aura size', max: 5 },
+    { id: 'boost', name: 'Aura speed', per: '+2% attack speed to towers in the aura', max: 5 },
+    { id: 'cost', name: 'Discount', per: '−2% cost', max: 5 },
+    { id: 'rally', name: 'Rally time', per: '+0.5 s Rally duration', max: 4 },
+    { id: 'cd', name: 'Rally recharge', per: '+5% ability recharge', max: 4 }
+];
+function perkList(type) { return type === 'mine' ? MINE_PERKS : type === 'sniper' ? SNIPER_PERKS : type === 'signal' ? SIGNAL_PERKS : PERKS; }
 /* ---------- Titles (lifetime balloons popped) ---------- */
 const TITLES = [
     { id: 'rookie', name: 'Rookie', pops: 0 },

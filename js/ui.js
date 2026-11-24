@@ -243,7 +243,7 @@ function refreshHUD(force) {
     $('sClockBox').classList.toggle('hide', !!g.wb);
     $('sClock').textContent = fmtClock(g.clock);
     $('sClockBox').classList.toggle('fast', !UI.paused && g.inRound && UI.speed > 1);
-    $('sClockBox').classList.toggle('stopped', !!(UI.paused || UI.modal));
+    $('sClockBox').classList.toggle('stopped', !!(UI.paused || UI.modal || !g.inRound));
     $('gSound').querySelector('img').src = 'assets/ui/' + (SETTINGS.sound ? 'sound-on' : 'sound-off') + '.svg';
     const rb = $('roundBtn');
     if (!g.inRound) {

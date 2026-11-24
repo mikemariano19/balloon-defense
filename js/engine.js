@@ -1028,6 +1028,10 @@ function statsFor(type, lv, perks) {
             s.dmg = s.dmg * (1 + 0.05 * perks.dmg); // Sniper Post skills (5.1)
         if (perks.blimp && s.dmg)
             s.bm = (s.bm || 1) * (1 + 0.10 * perks.blimp);
+        if (perks.boost && s.mode === 'aura')
+            s.buffRate += 0.02 * perks.boost; // Signal Tower skills (5.1.2)
+        if (perks.rally)
+            s.rallyT = 0.5 * perks.rally;
     }
     return s;
 }
@@ -1429,7 +1433,7 @@ function useAbility(t) {
         case 'signal':
             for (const o of g.towers)
                 if (!TD[o.type].support && Math.hypot(o.x - t.x, o.y - t.y) <= t.s.aura) {
-                    o.boostT = Math.max(o.boostT, pw === 2 ? 8 : 6);
+                    o.boostT = Math.max(o.boostT, (pw === 2 ? 8 : 6) + (t.s.rallyT || 0));
                     o.boostMul = Math.max(o.boostMul, pw === 2 ? 2.5 : 2);
                 }
             addFx({ k: 'ring', x: t.x, y: t.y, r: t.s.aura, col: '#80cbc4', life: .6, fill: true });
@@ -1483,8 +1487,8 @@ function explode(p) {
 function update(dt) {
     const g = game;
     g.time += dt;
-    if (g.round >= 1 && !g.won)
-        g.clock += dt; // game clock for ranking
+    if (g.inRound && !g.won)
+        g.clock += dt; // game clock for ranking: only runs while a round is being played
     if (g.autoT >= 0) {
         g.autoT -= dt;
         if (g.autoT < 0)
