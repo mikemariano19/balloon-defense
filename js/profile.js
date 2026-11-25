@@ -423,7 +423,7 @@ function mergeSaves(a, b) {
     const wh = out.wbHist = Object.assign({}, obj(older.wbHist), obj(newer.wbHist));
     for (const [k, h] of Object.entries(obj(older.wbHist))) {
         const n = obj(newer.wbHist)[k];
-        if (n && (+h.d || 0) > (+n.d || 0))
+        if (n && compareWb(h, n) < 0)
             wh[k] = h;
     }
     // game history: both lists, the newest 30
@@ -602,7 +602,7 @@ const HISTORY_MAX = 30;
 function historyEntry(g, rank = 0, at = Date.now()) {
     return { id: at.toString(36) + Math.random().toString(36).slice(2, 6), at, map: g.map.id, diff: g.diffKey, mode: g.mode, daily: !!g.daily,
         wb: g.wb ? g.wb.boss.id : '', won: !!g.won, round: g.round, lives: Math.max(0, g.lives), pops: g.pops || 0, clock: Math.round(g.clock || 0),
-        wbTime: g.wb ? Math.round(g.wb.t || 0) : 0, score: g.wb && typeof wbScore === 'function' ? wbScore(g) : 0, rank: rank || 0 };
+        wbTime: g.wb ? Math.round(g.wb.t || 0) : 0, wbElite: !!(g.wb && g.wb.elite), wbTiers: g.wb ? g.wb.tiers || 0 : 0, score: g.wb && typeof wbScore === 'function' ? wbScore(g) : 0, rank: rank || 0 };
 }
 function historyList() { const h = store.get('history', []); return Array.isArray(h) ? h : []; }
 function addHistory(e) { store.set('history', [e, ...historyList().filter(x => x && x.id !== e.id)].slice(0, HISTORY_MAX)); }

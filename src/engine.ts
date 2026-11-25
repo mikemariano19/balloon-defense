@@ -119,18 +119,18 @@ function dailyStreak(d = store.get('daily', {}), now = new Date()) {
     }
     return n;
 }
-/* Daily challenge results for the Daily Top 10: each player's best try per date. Wins rank first, then more lives
-   left, then a faster game clock; tries that were lost rank by the round reached. */
+/* Daily challenge results for the Daily Top 10: each player's best try per date. Wins rank first, then a faster
+   game clock, then more lives left; tries that were lost rank by the round reached. */
 function dailyRunFrom(g) { return { won: !!g.won, round: g.round, lives: Math.max(0, g.lives), clock: Math.round((g.clock || 0) * 100) / 100, at: Date.now() }; }
 function compareDaily(a, b) {
     if (!!a.won !== !!b.won)
         return a.won ? -1 : 1;
     if (!a.won && a.round !== b.round)
         return b.round - a.round;
-    if (a.lives !== b.lives)
-        return b.lives - a.lives;
     if (Math.abs((a.clock || 0) - (b.clock || 0)) > 1e-6)
         return (a.clock || 0) - (b.clock || 0);
+    if (a.lives !== b.lives)
+        return b.lives - a.lives;
     return (a.at || 0) - (b.at || 0);
 }
 /** Keeps the player's best daily try for that date. Only the first end of a game counts (not freeplay after a win). */
@@ -425,7 +425,8 @@ function createGame(cfg, snap?) {
         pops: 0, roundPops: 0, hpMult: 1, popMult: 1, time: 0, clock: 0, autoT: -1, startedAt: Date.now(), leaked: 0, deco: makeDeco(map, paths), saveT: 0,
         allowed: MODES[mode].towers || SHOP, perks, ua: !!DEV.unlockAll, cleared: [], submitted: false, shake: 0,
         abCd: {}, abMax: {}, // ability cooldowns are shared by every tower of a type (no spamming one ability)
-        wb: wbBoss ? { boss: Object.assign({}, wbBoss), k: cfg.wbWeek === undefined ? -1 : cfg.wbWeek, t: 0, summonT: 0, payT: 0, damage: 0, killed: false, ref: null, done: false } : null };
+        wb: wbBoss ? { boss: Object.assign({}, wbBoss), k: cfg.wbWeek === undefined ? -1 : cfg.wbWeek, elite: !!cfg.wbElite, t: 0, summonT: 0, payT: 0, damage: 0,
+            tier: 0, tiers: 0, clearT: 0, angry: false, escaped: false, killed: false, ref: null, done: false } : null };
     if (snap) {
         game.cleared = (snap.cleared || []).slice();
         game.deco = game.deco.filter(o => !game.cleared.includes(o.id));
@@ -596,7 +597,7 @@ function makeBalloon(type, dist, o: any = {}) {
     const ri = REGROW_CHAIN.indexOf(type), regrow = !!o.regrow && ri >= 0;
     const b = { id: nextId++, type, hp, maxHp: hp, dist, camo: !!o.camo && !d.blimp, lineage: o.lineage || 0, pi: o.pi || 0, frozen: 0, slow: 0,
         slowT: 0, bslow: 0, dead: false, x: 0, y: 0, a: 0, wob: Math.random() * 6, flash: 0,
-        regrow, regTop: regrow ? (o.regTop ?? ri) : -1, regT: 0, fort, bossStage: 0, spdMul: 1, numT: 0, born: o.kid ? game.time : -9 };
+        regrow, regTop: regrow ? (o.regTop ?? ri) : -1, regT: 0, fort, bossStage: 0, spdMul: 1, numT: 0, born: o.kid ? game.time : -9, wr: o.wr || 0 };
     if (!b.lineage)
         b.lineage = b.id;
     const p = posAt(game.paths[b.pi], dist);
@@ -621,7 +622,15 @@ function damageBalloon(b, dmg, dtype, src, bm?) {
         dmg *= bm;
     b.regT = 0;
     if (d.wb) {
-        // World Boss: its defense cuts the damage; every point dealt is score. Hits close together show as one number.
+        // World Boss: its shield (a skull skill) blocks all damage for a moment
+        if (b.shieldT > 0) {
+            if (b.numT <= 0) {
+                addFx({ k: 'clink', x: b.x + (Math.random() - .5) * d.r, y: b.y - d.r * .3, life: .18 });
+                b.numT = .25;
+            }
+            return 1;
+        }
+        // its defense cuts the damage; every point dealt is score. Hits close together show as one number.
         dmg *= game.wb.boss.def;
         const dealt = Math.min(dmg, b.hp);
         game.wb.damage += dealt;
@@ -639,7 +648,9 @@ function damageBalloon(b, dmg, dtype, src, bm?) {
     if (b.hp > dmg) {
         b.hp -= dmg;
         b.flash = 0.06;
-        if (d.boss && !d.wb)
+        if (d.wb)
+            wbSkullCheck(b);
+        else if (d.boss)
             bossCheck(b);
         return 1;
     }
@@ -674,11 +685,7 @@ function popBalloon(b, left, dtype, src) {
     }
     let kids = d.kids;
     if (d.wb) {
-        PROFILE.bosses++;
-        g.wb.killed = true;
-        toast(d.name + ' defeated!', 'good');
-        Sound.play('chime');
-        wbEnd(true);
+        wbTierPopped(b);
         return;
     }
     if (d.boss) {
@@ -688,7 +695,7 @@ function popBalloon(b, left, dtype, src) {
         Sound.play('chime');
     }
     kids.forEach((k, i) => {
-        const c = makeBalloon(k, Math.max(0, b.dist - i * (d.blimp ? 14 : 8)), { camo: b.camo, lineage: b.lineage, pi: b.pi, regrow: b.regrow, regTop: b.regTop, kid: true });
+        const c = makeBalloon(k, Math.max(0, b.dist - i * (d.blimp ? 14 : 8)), { camo: b.camo, lineage: b.lineage, pi: b.pi, regrow: b.regrow, regTop: b.regTop, kid: true, wr: b.wr });
         c.slow = b.slow;
         g.balloons.push(c);
         if (left > 0)
@@ -710,56 +717,156 @@ function bossCheck(b) {
     }
 }
 function leakValue(b) { return BT[b.type].boss ? Math.ceil(b.hp) : Math.ceil(b.hp) + BT[b.type].kids.reduce((s, k) => s + RBE[k], 0); }
-/* ---------- World Boss run ----------
-   PLAY brings the boss in. It walks the looping road forever and summons balloons on a timer that speeds up
-   (wbSummonGap); the balloons get 1% stronger every minute (wbStrength) and take lives when they get through.
-   Every 30 s is a payday (round bonus, Gold Mine income, tower XP). The run ends when lives reach 0 or the boss dies. */
-const WB_PAY_GAP = 30, WB_PAY_BONUS = 100, WB_KILL_BONUS = 10;
+/* ---------- World Boss run (5.2: rounds, five tiers, a road with an END) ----------
+   PLAY starts round 1. Rounds go on by themselves: the next one starts WB_ROUND_GAP seconds after this one's balloons
+   are all popped, or after WB_ROUND_MAX seconds. Every round pays like a normal round (round bonus, Gold Mine income
+   and lives, XP). Tier n comes at the start of round WB_TIER_ROUNDS[n - 1] (40, 60, 80, 100, 120), but only once tier
+   n - 1 is popped. The boss walks the road very slowly (wbWalkTime) and stops to summon balloons on a timer that speeds
+   up (wbSummonGap); its balloons get 1% stronger every minute (wbStrength) and take lives when they get through. When
+   its health drops past a skull it uses its skill (WB_SKILLS); at the last skull it gets angry. The boss can't be
+   frozen, stunned or slowed. The run ends when all five tiers are popped (a win), the boss reaches the END, lives reach
+   0, or round WB_LAST_ROUND (140) comes first. */
+const WB_KILL_BONUS = 10;
+/** Tier n's HP, speed multiplier and skull count (Elite: more HP, faster, one more skull). */
+function wbTierStats(n, elite, boss = game.wb.boss) {
+    const t = WB_TIERS[Math.max(0, Math.min(WB_TIERS.length - 1, n - 1))];
+    return { hp: Math.round((boss.hp || WB_HP) * t.hp * (elite ? WB_ELITE.hp : 1)), spd: t.spd * (elite ? WB_ELITE.spd : 1), skulls: t.skulls + (elite ? WB_ELITE.skulls : 0) };
+}
+/** The round the next tier comes on (0 when all five are out). */
+function wbNextTierRound(w = game.wb) { return w.tier < WB_TIERS.length ? WB_TIER_ROUNDS[w.tier] : 0; }
 function wbStart() {
-    // the boss starts just past the hole (its back edge clear of it) and walks on from there
-    const g = game, b = makeBalloon(g.wb.boss.id, BT[g.wb.boss.id].r + 36, { pi: 0 });
+    game.round = 0;
+    wbNextRound(false);
+}
+/** Starts the next round (after paying for the one just played). Its balloons are added to any still to come. */
+function wbNextRound(pay = true) {
+    const g = game, w = g.wb;
+    if (pay)
+        wbPayday();
+    g.round++;
+    if (g.round >= WB_LAST_ROUND) {
+        toast('Round ' + WB_LAST_ROUND + ': the boss was not beaten in time. Your damage counts!', 'warn');
+        wbEnd(false);
+        return;
+    }
+    const left = g.spawnQ.map(q => Object.assign({}, q, { at: Math.max(0, q.at - g.roundTime) }));
+    g.spawnQ = left.concat(buildSpawns(g.round).filter(q => !BT[q.type].boss)).sort((a, b) => a.at - b.at);
+    g.roundTotal = g.spawnQ.length;
+    g.roundTime = 0;
+    w.clearT = 0;
+    const next = wbNextTierRound(w);
+    if (next && next - g.round > 0 && next - g.round <= 3)
+        toast('Round ' + g.round + ' · tier ' + (w.tier + 1) + ' comes on round ' + next + '!', 'warn');
+    else if (g.round % 10 === 0)
+        toast('Round ' + g.round);
+}
+/** The next tier comes out at the start of the road (its back edge clear of the edge) and walks towards the END. */
+function wbSpawnTier() {
+    const g = game, w = g.wb, n = ++w.tier, st = wbTierStats(n, w.elite), id = w.boss.id, path = g.paths[0];
+    const b: any = makeBalloon(id, BT[id].r + 36, { pi: 0 });
+    b.hp = b.maxHp = st.hp;
+    Object.assign(b, { tier: n, skulls: st.skulls, bossStage: 0, shieldT: 0, dashT: 0, castT: 0 });
+    // the same walk time on every map: speed = road length / walk time
+    b.spdMul = (path.len / (wbWalkTime(w.boss) / st.spd)) / (BASE_SPEED * BT[id].spd);
     g.balloons.push(b);
-    g.wb.ref = b;
+    w.ref = b;
+    w.angry = false;
+    w.summonT = 0;
     onBoss(b);
-    toast(g.wb.boss.name + ' is here! Deal as much damage as you can.', 'warn');
+    toast('Round ' + g.round + ' · tier ' + n + ': ' + w.boss.name + ' is here! Pop it before it reaches the END.', 'warn');
     Sound.play('boss');
 }
+/** A tier was popped: the next one comes on its round (or now, if that round has passed). Popping tier 5 wins the run. */
+function wbTierPopped(b) {
+    const g = game, w = g.wb;
+    PROFILE.bosses++;
+    w.tiers++;
+    w.ref = null;
+    w.angry = false;
+    Sound.play('chime');
+    if (w.tiers >= WB_TIERS.length) {
+        w.killed = true;
+        toast(w.boss.name + ' defeated! All ' + WB_TIERS.length + ' tiers popped!', 'good');
+        wbEnd(true);
+        return;
+    }
+    const next = wbNextTierRound(w);
+    toast('Tier ' + w.tiers + ' popped!' + (next > g.round ? ' Tier ' + (w.tier + 1) + ' comes on round ' + next + '.' : ' Here comes tier ' + (w.tier + 1) + '!'), 'good');
+}
+/** Skulls on the health bar: one at every 1/(skulls+1) of its health. Each one passed uses the boss's skill. */
+function wbSkullCheck(b) {
+    while (b.bossStage < b.skulls && b.hp / b.maxHp <= 1 - (b.bossStage + 1) / (b.skulls + 1)) {
+        b.bossStage++;
+        wbSkill(b, b.bossStage === b.skulls);
+    }
+}
+function wbSkill(b, last) {
+    const w = game.wb, sk = w.boss.skill || 'brood';
+    if (sk === 'dash')
+        b.dashT = 2.5;
+    else if (sk === 'shield')
+        b.shieldT = 4;
+    else if (sk === 'brood')
+        wbSummon(b, wbMob(w.t), w.boss.count * 3);
+    else
+        wbSummon(b, wbMob(w.t + 300), w.boss.count * 2);
+    addFx({ k: 'ring', x: b.x, y: b.y, r: BT[b.type].r * 1.6, col: last ? '#ff6d00' : '#ce93d8', life: .7, fill: true });
+    addShake(6);
+    Sound.play('boss');
+    if (last) { // the flaming skull: angry for the rest of this tier
+        w.angry = true;
+        b.spdMul *= 1.25;
+        toast(w.boss.name + ' is angry! Faster, and it summons more often.', 'warn');
+    }
+    else
+        toast(w.boss.name + ': ' + (WB_SKILLS[sk] || '').split(':')[0] + '!', 'warn');
+}
 function wbTick(dt) {
-    const g = game, w = g.wb, boss = w.ref;
-    if (w.k >= 0 && wbNow() >= wbEndsAt(w.k)) { // 5:00 PM: the event is over, and so is this run
+    const g = game, w = g.wb;
+    if (w.k >= 0 && wbNow() >= wbDayEnd(w.k, w.elite)) { // 5:00 PM: the event is over, and so is this run
         toast('5:00 PM: the World Boss event is over. Your damage counts!', 'warn');
         wbEnd(false);
         return;
     }
     w.t += dt;
-    g.hpMult = wbStrength(w.t);
-    w.summonT += dt;
-    const gap = wbSummonGap(w.t, w.boss.every);
-    if (w.summonT >= gap) {
-        w.summonT = 0;
-        if (boss && !boss.dead)
+    g.hpMult = hpMultFor(g.round);
+    // the next tier, on its round (or as soon as the one before it is popped)
+    if (!(w.ref && !w.ref.dead) && w.tier < WB_TIERS.length && g.round >= wbNextTierRound(w))
+        wbSpawnTier();
+    const boss = w.ref && !w.ref.dead ? w.ref : null;
+    if (boss) {
+        boss.shieldT = Math.max(0, (boss.shieldT || 0) - dt);
+        boss.dashT = Math.max(0, (boss.dashT || 0) - dt);
+        boss.castT = Math.max(0, (boss.castT || 0) - dt);
+        w.summonT += dt;
+        if (w.summonT >= wbSummonGap(w.t, w.boss.every) * (w.angry ? 0.7 : 1)) {
+            w.summonT = 0;
             wbSummon(boss);
+        }
     }
-    w.payT += dt;
-    if (w.payT >= WB_PAY_GAP) {
-        w.payT -= WB_PAY_GAP;
-        wbPayday();
-    }
+    // rounds keep going while the boss is out: the next one once this round's balloons are all popped
+    const busy = g.spawnQ.length > 0 || g.balloons.some(b => !b.dead && b.wr === g.round);
+    w.clearT = busy ? 0 : (w.clearT || 0) + dt;
+    if (w.clearT >= WB_ROUND_GAP || g.roundTime >= WB_ROUND_MAX)
+        wbNextRound();
 }
-/** The boss drops balloons right behind itself, on its own road. Fortified from minute 8, some camo from minute 12. */
-function wbSummon(b) {
-    const g = game, w = g.wb, type = wbMob(w.t);
-    for (let i = 0; i < w.boss.count; i++) {
-        const c = makeBalloon(type, Math.max(0, b.dist - BT[b.type].r * 0.4 - i * 16), { pi: b.pi, kid: true, fort: w.t >= 480, camo: w.t >= 720 && i % 3 === 2 });
-        g.balloons.push(c);
-    }
+/** Summoned balloons are fortified from minute 8, and some are camo from minute 12. */
+function wbMobOpts(i) { const t = game.wb.t; return { pi: 0, kid: true, fort: t >= 480, camo: t >= 720 && i % 3 === 2 }; }
+/** The boss stops (WB_CAST_TIME) and drops balloons right behind itself, on its own road. They get stronger over time. */
+function wbSummon(b, type = wbMob(game.wb.t), count = game.wb.boss.count) {
+    const g = game, hm = g.hpMult;
+    b.castT = WB_CAST_TIME;
+    g.hpMult = Math.max(hm, wbStrength(g.wb.t));
+    for (let i = 0; i < count; i++)
+        g.balloons.push(makeBalloon(type, Math.max(0, b.dist - BT[b.type].r * 0.4 - i * 16), Object.assign(wbMobOpts(i), { pi: b.pi })));
+    g.hpMult = hm;
     addFx({ k: 'ring', x: b.x, y: b.y, r: BT[b.type].r * 1.1, col: '#ce93d8', life: .5, fill: true });
 }
-/** Every 30 s: a small bonus, Gold Mine income and lives, player XP and tower XP (like the end of a round). */
+/** The end of every round: the round bonus, Gold Mine income and lives, player XP and tower XP. */
 function wbPayday() {
-    const g = game;
-    let income = WB_PAY_BONUS, lives = 0;
-    g.cash += WB_PAY_BONUS;
+    const g = game, bonus = roundBonus(g.round);
+    let income = bonus, lives = 0;
+    g.cash += bonus;
     for (const t of g.towers) {
         if (t.s.income > 0) {
             let inc = t.s.income;
@@ -773,7 +880,7 @@ function wbPayday() {
             lives += t.s.lives;
     }
     g.lives += lives;
-    toast('Payday · +$' + income + (lives ? ' · +' + lives + ' lives' : ''), 'good');
+    toast('Round ' + g.round + ' complete · +$' + income + (lives ? ' · +' + lives + ' lives' : ''), 'good');
     wbFlushXP();
 }
 /** Pops become player XP and stats; tower time on the field becomes tower XP. */
@@ -799,20 +906,37 @@ function wbFlushXP() {
 }
 /** Score: all damage dealt; killing the boss adds 10 per life left. */
 function wbScore(g = game) { return Math.round(g.wb.damage) + (g.wb.killed ? WB_KILL_BONUS * Math.max(0, g.lives) : 0); }
+/** World Boss order: killing the boss ranks first, then the faster kill, then more lives left; runs that didn't
+    kill it rank by damage. Ties: whoever got there first. */
+function compareWb(a, b) {
+    if (!!a.won !== !!b.won)
+        return a.won ? -1 : 1;
+    if (a.won) {
+        if (Math.abs((+a.t || 0) - (+b.t || 0)) > 1e-6)
+            return (+a.t || 0) - (+b.t || 0);
+        if ((+a.lives || 0) !== (+b.lives || 0))
+            return (+b.lives || 0) - (+a.lives || 0);
+    }
+    else if ((+a.d || 0) !== (+b.d || 0))
+        return (+b.d || 0) - (+a.d || 0);
+    return (+a.at || 0) - (+b.at || 0);
+}
 /** Keeps the best score for the week the run started in. Called every few seconds and at the end. True = new best. */
 function wbRecord(g = game) {
     if (!g || !g.wb || g.wb.k < 0 || g.ua)
         return false;
     const now = wbNow(); // only while the event is open (a few seconds' grace for the run that ends at 5:00 PM)
-    if (now < wbStartsAt(g.wb.k) || now > wbEndsAt(g.wb.k) + WB_ANNOUNCE_MS)
+    if (now < wbDayStart(g.wb.k, g.wb.elite) || now > wbDayEnd(g.wb.k, g.wb.elite) + WB_ANNOUNCE_MS)
         return false;
-    const s = wbScore(g), hist = store.get('wbHist', {}), k = String(g.wb.k), cur = hist[k];
-    if (s <= 0 || (cur && cur.d >= s))
+    const s = wbScore(g), hist = store.get('wbHist', {}), k = wbKey(g.wb.k, g.wb.elite), cur = hist[k];
+    const run = { d: s, won: !!g.wb.killed, tiers: g.wb.tiers, elite: !!g.wb.elite, t: Math.round((g.wb.t || 0) * 100) / 100, lives: Math.max(0, g.lives), at: now,
+        boss: g.wb.boss.id, map: g.map.id };
+    if (s <= 0 || (cur && compareWb(cur, run) <= 0))
         return false;
-    hist[k] = { d: s, at: now, boss: g.wb.boss.id, map: g.map.id };
+    hist[k] = run;
     const out = {};
-    for (const key of Object.keys(hist).sort((a, b) => +a - +b).slice(-8))
-        out[key] = hist[key]; // two months is plenty
+    for (const key of Object.keys(hist).sort((a, b) => parseInt(a) - parseInt(b) || a.localeCompare(b)).slice(-16))
+        out[key] = hist[key]; // two months (Normal and Elite) is plenty
     store.set('wbHist', out);
     return true;
 }
@@ -999,6 +1123,10 @@ function statsFor(type, lv, perks?) {
             s.dmg = s.dmg * (1 + 0.05 * perks.dmg); // Sniper Post skills (5.1)
         if (perks.blimp && s.dmg)
             s.bm = (s.bm || 1) * (1 + 0.10 * perks.blimp);
+        if (perks.boost && s.mode === 'aura')
+            s.buffRate += 0.02 * perks.boost; // Signal Tower skills (5.1.2)
+        if (perks.rally)
+            s.rallyT = 0.5 * perks.rally;
     }
     return s;
 }
@@ -1400,7 +1528,7 @@ function useAbility(t) {
         case 'signal':
             for (const o of g.towers)
                 if (!TD[o.type].support && Math.hypot(o.x - t.x, o.y - t.y) <= t.s.aura) {
-                    o.boostT = Math.max(o.boostT, pw === 2 ? 8 : 6);
+                    o.boostT = Math.max(o.boostT, (pw === 2 ? 8 : 6) + (t.s.rallyT || 0));
                     o.boostMul = Math.max(o.boostMul, pw === 2 ? 2.5 : 2);
                 }
             addFx({ k: 'ring', x: t.x, y: t.y, r: t.s.aura, col: '#80cbc4', life: .6, fill: true });
@@ -1454,8 +1582,8 @@ function explode(p) {
 function update(dt) {
     const g = game;
     g.time += dt;
-    if (g.round >= 1 && !g.won)
-        g.clock += dt; // game clock for ranking
+    if (g.inRound && !g.won)
+        g.clock += dt; // game clock for ranking: only runs while a round is being played
     if (g.autoT >= 0) {
         g.autoT -= dt;
         if (g.autoT < 0)
@@ -1474,7 +1602,7 @@ function update(dt) {
         }
         while (g.spawnQ.length && g.spawnQ[0].at <= g.roundTime) {
             const s = g.spawnQ.shift();
-            const b = makeBalloon(s.type, 0, { camo: s.camo, pi: g.spawned % g.paths.length, regrow: s.regrow, fort: s.fort });
+            const b = makeBalloon(s.type, 0, { camo: s.camo, pi: g.spawned % g.paths.length, regrow: s.regrow, fort: s.fort, wr: g.wb ? g.round : 0 });
             g.balloons.push(b);
             g.spawned++;
             if (BT[s.type].boss)
@@ -1505,11 +1633,18 @@ function update(dt) {
                 addFx({ k: 'ring', x: b.x, y: b.y, r: 18, col: '#69f0ae', life: .3 });
             }
         }
+        const wbBoss = BT[b.type].wb;
+        if (wbBoss) // the World Boss can't be frozen, stunned or slowed
+            b.frozen = b.slowT = b.slow = b.bslow = 0;
         if (b.frozen > 0) {
             b.frozen -= dt;
             continue;
         }
         let sp = balloonSpeed(b);
+        if (wbBoss && b.dashT > 0)
+            sp *= 3;
+        else if (wbBoss && b.castT > 0)
+            sp = 0; // it stands still while it summons
         if (b.slowT > 0) {
             b.slowT -= dt;
             sp *= (1 - b.bslow);
@@ -1518,8 +1653,14 @@ function update(dt) {
         }
         b.dist += sp * dt;
         const path = g.paths[b.pi];
-        if (b.dist >= path.len && BT[b.type].wb)
-            b.dist -= path.len; // the World Boss walks the loop forever and never takes lives
+        if (b.dist >= path.len && wbBoss) { // the World Boss reached the END: the run is over
+            b.dist = path.len;
+            g.wb.escaped = true;
+            toast(BT[b.type].name + ' reached the END!', 'bad');
+            Sound.play('leak');
+            wbEnd(false);
+            return;
+        }
         if (b.dist >= path.len) {
             b.dead = true;
             const lv = leakValue(b);

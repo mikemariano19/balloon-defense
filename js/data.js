@@ -1,7 +1,7 @@
 "use strict";
 /* Balloon Defense — game data: maps, modes, difficulties, balloons, towers, rounds, titles, avatars.
    Edit these tables to rebalance the game; no other file needs to change. */
-const VERSION = '5.1.1';
+const VERSION = '5.2';
 const W = 960, H = 600, TAU = Math.PI * 2;
 /* ---------- Tile grid (40 x 25 tiles of 24 px) ---------- */
 const TILE = 24, COLS = W / TILE, ROWS = H / TILE;
@@ -215,7 +215,7 @@ const BORDERS = [
     { id: 'streak', name: 'Daily Flame', how: '30-day daily challenge streak', col: '#ff7043', w: 6, dots: '#ffd54f' },
     { id: 'medalist', name: 'Medalist', how: 'Hold 10 gold medals (1st place on 10 stage boards)', col: '#ffd54f', w: 6, rivets: '#fff8e1' },
     // special: worn automatically by the World Boss Champion (announced Friday 5:01 PM), never picked by hand or kept in a save
-    { id: 'wblegend', name: 'World Boss Legend', how: 'Be the World Boss Champion: the most damage on Friday (worn for 7 days)', col: '#1b1b1b', w: 8, storm: true, special: true } // Obsidian Fangs with lightning: drawn by stormBorder (profile.ts)
+    { id: 'wblegend', name: 'World Boss Legend', how: 'Be the World Boss Champion: #1 on the Friday World Boss board (worn for 7 days)', col: '#1b1b1b', w: 8, storm: true, special: true } // Obsidian Fangs with lightning: drawn by stormBorder (profile.ts)
 ];
 const NAME_FILTER = ['fuck', 'shit', 'bitch', 'cunt', 'nigg', 'fag', 'dick', 'cock', 'pussy', 'whore', 'slut', 'rape', 'nazi', 'hitler', 'gago', 'ulol', 'kupal', 'pekpek', 'putangina'];
 /* ---------- Balloons ---------- */
@@ -378,25 +378,25 @@ const TD = {
                 { n: 'Earthquake', c: 5200, d: '+30 blast, +2 damage, stun also slows blimps', a: s => { s.blast += 30; s.dmg += 2; s.stun = 1.2; } },
                 { n: 'Seismic Core', c: 20000, d: '+5 damage, +40 blast, reloads faster', a: s => { s.dmg += 5; s.blast += 40; s.rate *= 0.7; } }]
         ] },
-    sniper: { name: 'Sniper Post', cost: 350, size: 2, r: 19, color: '#6b8e23', unlock: 1, desc: 'Hits any balloon it can see, instantly. Pops lead. Tall scenery blocks it.',
+    sniper: { name: 'Sniper Post', cost: 700, size: 2, r: 19, color: '#6b8e23', unlock: 1, desc: 'Hits any balloon it can see, instantly. Pops lead. Tall scenery blocks it. Expensive: it is the strongest single-target tower.',
         ability: { name: 'Airstrike', desc: 'Bomb the 3 toughest balloons: 30 damage in a wide blast.', cd: 45 },
         base: { range: 9999, rate: 1.6, dmg: 2, mode: 'hitscan', camo: false, bm: 1, bounce: 0, income: 0 },
         paths: [
-            [{ n: 'Full Metal', c: 350, d: '4 damage per shot', a: s => { s.dmg = 4; } },
-                { n: 'Point Five', c: 1200, d: '7 damage per shot', a: s => { s.dmg = 7; } },
-                { n: 'Elite Marksman', c: 3500, d: '18 damage, double damage to blimps', a: s => { s.dmg = 18; s.bm = 2; } },
-                { n: 'Deadeye', c: 8000, d: '40 damage, 3x vs blimps', a: s => { s.dmg = 40; s.bm = 3; } },
-                { n: 'Cloud Piercer', c: 30000, d: '100 damage, 4x vs blimps', a: s => { s.dmg = 100; s.bm = 4; } }],
-            [{ n: 'Night Scope', c: 300, d: 'Camo detection', a: s => { s.camo = true; } },
-                { n: 'Fast Bolt', c: 500, d: 'Fires 40% faster', a: s => { s.rate *= 0.6; } },
-                { n: 'Semi-Auto', c: 2800, d: 'Fires 3x faster', a: s => { s.rate /= 3; } },
-                { n: 'Full Auto', c: 6500, d: 'Fires twice as fast again', a: s => { s.rate *= 0.5; } },
-                { n: 'Bullet Storm', c: 24000, d: 'Twice as fast again, +4 damage', a: s => { s.rate *= 0.5; s.dmg += 4; } }],
-            [{ n: 'Steady Aim', c: 250, d: 'Fires 15% faster', a: s => { s.rate *= 0.85; } },
-                { n: 'Ricochet', c: 600, d: 'Shots bounce to 2 more balloons', a: s => { s.bounce = 2; } },
-                { n: 'Shrapnel Rounds', c: 1800, d: 'Bounces to 5 balloons, +1 damage', a: s => { s.bounce = 5; s.dmg += 1; } },
-                { n: 'Supply Sniper', c: 4800, d: '+2 bounces and earns $150 per round', a: s => { s.bounce += 2; s.income += 150; } },
-                { n: 'Ghost Rounds', c: 19000, d: '10 bounces, +6 damage, camo detection', a: s => { s.bounce = 10; s.dmg += 6; s.camo = true; } }]
+            [{ n: 'Full Metal', c: 550, d: '4 damage per shot', a: s => { s.dmg = 4; } },
+                { n: 'Point Five', c: 1800, d: '7 damage per shot', a: s => { s.dmg = 7; } },
+                { n: 'Elite Marksman', c: 5250, d: '18 damage, double damage to blimps', a: s => { s.dmg = 18; s.bm = 2; } },
+                { n: 'Deadeye', c: 12000, d: '40 damage, 3x vs blimps', a: s => { s.dmg = 40; s.bm = 3; } },
+                { n: 'Cloud Piercer', c: 45000, d: '100 damage, 4x vs blimps', a: s => { s.dmg = 100; s.bm = 4; } }],
+            [{ n: 'Night Scope', c: 450, d: 'Camo detection', a: s => { s.camo = true; } },
+                { n: 'Fast Bolt', c: 750, d: 'Fires 40% faster', a: s => { s.rate *= 0.6; } },
+                { n: 'Semi-Auto', c: 4200, d: 'Fires 3x faster', a: s => { s.rate /= 3; } },
+                { n: 'Full Auto', c: 9750, d: 'Fires twice as fast again', a: s => { s.rate *= 0.5; } },
+                { n: 'Bullet Storm', c: 36000, d: 'Twice as fast again, +4 damage', a: s => { s.rate *= 0.5; s.dmg += 4; } }],
+            [{ n: 'Steady Aim', c: 400, d: 'Fires 15% faster', a: s => { s.rate *= 0.85; } },
+                { n: 'Ricochet', c: 900, d: 'Shots bounce to 2 more balloons', a: s => { s.bounce = 2; } },
+                { n: 'Shrapnel Rounds', c: 2700, d: 'Bounces to 5 balloons, +1 damage', a: s => { s.bounce = 5; s.dmg += 1; } },
+                { n: 'Supply Sniper', c: 7200, d: '+2 bounces and earns $150 per round', a: s => { s.bounce += 2; s.income += 150; } },
+                { n: 'Ghost Rounds', c: 28500, d: '10 bounces, +6 damage, camo detection', a: s => { s.bounce = 10; s.dmg += 6; s.camo = true; } }]
         ] },
     frost: { name: 'Frost Tower', cost: 400, size: 2, r: 19, color: '#4fc3f7', unlock: 2, desc: 'Freezes nearby balloons in place. No effect on white, zebra or blimps.',
         ability: { name: 'Absolute Zero', desc: 'Freeze every balloon on screen for 3 s and slow blimps for 4 s.', cd: 50 },
@@ -503,6 +503,15 @@ const SHOP = ['dart', 'tack', 'bomb', 'sniper', 'frost', 'signal', 'tesla', 'boa
 const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 /** Release notes, newest first (the News panel on the home page). */
 const NEWS = [
+    { v: '5.2', date: '2026-11-26', items: [
+            'World Boss: two days a week. Normal on Thursday, Elite on Friday (2.5x HP, 15% faster, one more skull per tier), both 7:30 AM to 5:00 PM (PH time). The leaderboard has an Elite tab and a Normal tab, and the Champion is Elite #1.',
+            'World Boss: played in rounds. Five boss tiers come on rounds 40, 60, 80, 100 and 120 (10,000 to 50,000 HP), and rounds keep going while a boss is out, so farms keep paying. A tier only comes once the one before it is popped. Pop all five before round 140 to win.',
+            'World Boss: every tier looks stronger than the last. The stars on the boss bar show its tier.',
+            'World Boss: four new maps with an END. The boss walks very slowly towards it and stops every time it summons; if it gets there, the run is over.',
+            'World Boss: skulls on its health bar. Each one makes it use its skill (Gale dashes, Bastion shields, Broodmother and Swarm King drop big batches); at the last, flaming skull it gets angry. It can\'t be frozen, stunned or slowed.',
+            'Daily Top 10 and World Boss boards: wins first, then fastest, then most lives.',
+            'Sniper Post is more expensive: $700 to build (was $350), and its upgrades cost 50% more.'
+        ] },
     { v: '5.1.1', date: '2026-11-18', items: [
             'A notification when a player dominates a map: every difficulty (Easy, Medium, Hard and Nightmare) cleared on it.',
             'A notification when another player takes your medal on a stage: who took it, the medal you have now, and the points you lost (for example -1). Your own new medals show the points you gained (for example +3).',
@@ -564,32 +573,57 @@ const WHATS_NEW = NEWS[0].items;
    Build: speed (BT spd), def = share of damage taken, count = balloons per summon, every = summon gap multiplier. */
 const WB_HP = 50000, WB_LIVES = 3000;
 const WB_BOSSES = [
-    { id: 'wbgale', name: 'Gale', build: 'Fast, normal defense', speed: 'Fast', def: 1, defTxt: 'Normal', count: 3, every: 1, summonTxt: '3 balloons each summon', cash: 10000 },
-    { id: 'wbbastion', name: 'Bastion', build: 'Slow, high defense', speed: 'Slow', def: 0.6, defTxt: 'High (takes 40% less damage)', count: 3, every: 1, summonTxt: '3 balloons each summon', cash: 10000 },
-    { id: 'wbbrood', name: 'Broodmother', build: 'Slow, medium defense, large summons', speed: 'Slow', def: 0.8, defTxt: 'Medium (takes 20% less damage)', count: 4, every: 1, summonTxt: '4 balloons each summon', cash: 10000 },
-    { id: 'wbswarm', name: 'Swarm King', build: 'Fast, normal defense, fast summoning', speed: 'Fast', def: 1, defTxt: 'Normal', count: 3, every: 0.6, summonTxt: '3 balloons, 40% more often', cash: 10000 }
+    { id: 'wbgale', name: 'Gale', build: 'Fast, normal defense', speed: 'Fast', def: 1, defTxt: 'Normal', count: 3, every: 1, summonTxt: '3 balloons each summon', cash: 10000, skill: 'dash' },
+    { id: 'wbbastion', name: 'Bastion', build: 'Slow, high defense', speed: 'Slow', def: 0.6, defTxt: 'High (takes 40% less damage)', count: 3, every: 1, summonTxt: '3 balloons each summon', cash: 10000, skill: 'shield' },
+    { id: 'wbbrood', name: 'Broodmother', build: 'Slow, medium defense, large summons', speed: 'Slow', def: 0.8, defTxt: 'Medium (takes 20% less damage)', count: 4, every: 1, summonTxt: '4 balloons each summon', cash: 10000, skill: 'brood' },
+    { id: 'wbswarm', name: 'Swarm King', build: 'Fast, normal defense, fast summoning', speed: 'Fast', def: 1, defTxt: 'Normal', count: 3, every: 0.6, summonTxt: '3 balloons, 40% more often', cash: 10000, skill: 'swarm' }
 ].map(b => Object.assign(b, { hp: WB_HP, lives: WB_LIVES }));
 /** 5.1.1: the builds as shipped. Master control can change a boss's name, HP, defense, start money, lives and summon
     size (applyWbConfig, profile.ts); "Reset to default" goes back to these. */
 const WB_DEFAULTS = WB_BOSSES.map(b => Object.assign({}, b));
-/* Four looping maps: the road comes back out next to where it went in, so the boss walks round and round. */
-/* Every World Boss road is one closed loop that starts and ends at the hole. The boss walks it round and round, passing
-   over the hole; its balloons go once round and drop into the hole (taking lives). Jungle Hollow is the designer's drawing. */
+/* 5.2: every World Boss road runs from a start to an END. The boss walks it slowly and keeps summoning; if it
+   reaches the END the run is over. The four maps were made for this (see the World Boss info). */
 const WB_MAPS = [
-    { id: 'wb-jungle', tier: 'worldboss', name: 'Jungle Hollow', theme: 'jungle', seed: 211, desc: 'One long loop through the jungle, out of the hole and back.',
-        paths: [[[456, 504], [456, 168], [792, 168], [792, 312], [600, 312], [600, 528], [888, 528], [888, 72], [72, 72], [72, 168], [360, 168],
-                [360, 288], [168, 288], [168, 504], [456, 504]]] },
-    { id: 'wb-lava', tier: 'worldboss', name: 'Lava Fangs', theme: 'volcano', seed: 223, desc: 'The road dips down like fangs, round a lava pool in the middle.',
-        paths: [[[480, 528], [888, 528], [888, 72], [744, 72], [744, 384], [600, 384], [600, 72], [360, 72], [360, 384], [216, 384], [216, 72], [72, 72],
-                [72, 528], [480, 528]]],
-        blocks: [{ k: 'lava', x: 480, y: 240, rx: 56, ry: 96 }] },
-    { id: 'wb-frost', tier: 'worldboss', name: 'Frozen Bridge', theme: 'snow', seed: 227, desc: 'Two frozen rooms joined by a long double bridge.',
-        paths: [[[480, 240], [696, 240], [696, 72], [888, 72], [888, 528], [696, 528], [696, 360], [264, 360], [264, 528], [72, 528], [72, 72], [264, 72],
-                [264, 240], [480, 240]]],
-        blocks: [{ k: 'ice', x: 480, y: 120, rx: 84, ry: 38 }, { k: 'ice', x: 480, y: 480, rx: 84, ry: 38 }] },
-    { id: 'wb-arena', tier: 'worldboss', name: 'Stone Serpent', theme: 'meadow', path: 'stone', seed: 229, desc: 'A stone road that snakes back and forth across the field.',
-        paths: [[[168, 504], [888, 504], [888, 384], [168, 384], [168, 264], [888, 264], [888, 144], [72, 144], [72, 504], [168, 504]]] }
+    { id: 'wb-jungle', tier: 'worldboss', name: 'Vine Switchback', theme: 'jungle', seed: 211, desc: 'Six long switchbacks through the jungle, top to bottom and back.',
+        paths: [[[72, -30], [72, 504], [216, 504], [216, 96], [360, 96], [360, 504], [504, 504], [504, 96], [648, 96], [648, 504], [792, 504], [792, 96], [990, 96]]] },
+    { id: 'wb-lava', tier: 'worldboss', name: 'Crater Spiral', theme: 'volcano', seed: 223, desc: 'The road spirals in past a lava pool and ends in the crater.',
+        paths: [[[-30, 72], [888, 72], [888, 528], [72, 528], [72, 216], [720, 216], [720, 384], [288, 384]]],
+        blocks: [{ k: 'lava', x: 552, y: 300, rx: 110, ry: 34 }] },
+    { id: 'wb-frost', tier: 'worldboss', name: 'Frozen Bays', theme: 'snow', seed: 227, desc: 'Two bays round frozen lakes, joined by a narrow double bridge.',
+        paths: [[[-30, 552], [96, 552], [96, 48], [432, 48], [432, 552], [528, 552], [528, 48], [864, 48], [864, 552], [990, 552]]],
+        blocks: [{ k: 'ice', x: 264, y: 372, rx: 70, ry: 96 }, { k: 'ice', x: 696, y: 372, rx: 70, ry: 96 }] },
+    { id: 'wb-arena', tier: 'worldboss', name: 'Stone Serpent', theme: 'meadow', path: 'stone', seed: 229, desc: 'A stone road that snakes back and forth down the field.',
+        paths: [[[-30, 72], [864, 72], [864, 216], [96, 216], [96, 360], [864, 360], [864, 504], [-30, 504]]] }
 ];
+/* 5.2: a World Boss fight is played in rounds, like a normal game, from round 1. Tier n comes at the start of round
+   WB_TIER_ROUNDS[n - 1] (40, 60, 80, 100, 120), but never before tier n - 1 is popped. Rounds keep going while a boss
+   is out, and every round pays (round bonus, Gold Mine income). All five must be popped before round WB_LAST_ROUND (140).
+   Tier HP is a share of the boss's HP (master control): 10,000 / 20,000 / 30,000 / 40,000 / 50,000 by default. Each tier
+   also walks a little faster and has more skulls: when its health drops past a skull it uses its skill, and at the
+   last (flaming) skull it gets angry (faster, summons more often).
+   Elite (Friday) has 2.5x HP, walks 15% faster and has one more skull per tier. */
+const WB_TIERS = [
+    { hp: 0.2, spd: 1, skulls: 1 }, { hp: 0.4, spd: 1.05, skulls: 2 }, { hp: 0.6, spd: 1.1, skulls: 3 }, { hp: 0.8, spd: 1.15, skulls: 4 }, { hp: 1, spd: 1.2, skulls: 5 }
+];
+const WB_TIER_ROUNDS = [40, 60, 80, 100, 120], WB_LAST_ROUND = 140;
+/** "40, 60, 80, 100 and 120" */
+function WB_TIERS_TXT() { return WB_TIER_ROUNDS.slice(0, -1).join(', ') + ' and ' + WB_TIER_ROUNDS[WB_TIER_ROUNDS.length - 1]; }
+/** A round starts this long after the last one is cleared, or after WB_ROUND_MAX seconds at most (so a boss that
+    keeps summoning can't hold the rounds up). */
+const WB_ROUND_GAP = 1.5, WB_ROUND_MAX = 40;
+const WB_ELITE = { hp: 2.5, spd: 1.15, skulls: 1 };
+/** How the boss's skull skills work (WB_BOSSES[].skill). */
+const WB_SKILLS = {
+    dash: 'Dash: runs 3 times as fast for 2.5 seconds',
+    shield: 'Shield: takes no damage for 4 seconds',
+    brood: 'Brood: drops a big batch of balloons',
+    swarm: 'Swarm: drops a batch of tougher balloons'
+};
+/** Seconds the boss needs to walk the whole road at tier 1 (Normal): the same on every map, whatever its length.
+    It is busy summoning, so it is very slow: 10 minutes for a fast boss, 12 for a slow one (not counting its stops). */
+function wbWalkTime(b) { return b.speed === 'Fast' ? 600 : 720; }
+/** Seconds the boss stands still each time it summons. */
+const WB_CAST_TIME = 1.5;
 /** Seconds between summons: 15 s, then 10 s after 10 minutes, then 5 s after 20 minutes (times the boss's multiplier). */
 function wbSummonGap(sec, every = 1) { return (sec >= 1200 ? 5 : sec >= 600 ? 10 : 15) * every; }
 /** Summoned balloons get 1% stronger every minute, compounding: about 1.1x at 10 min, 1.2x at 20 and 1.35x at 30. */

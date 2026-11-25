@@ -199,40 +199,148 @@ test('World Boss schedule: each event ends Friday 5:00 PM Philippine time; never
 
 /** Sets the World Boss clock (wbNow) in a sandbox. Event 46 is open on Friday 27 Nov 2026, 7:30 AM to 5:00 PM PH time. */
 const setClock = (E, t) => E.run('wbNow = () => ' + t);
-const openAt = E => E.wbStartsAt(46) + 3600e3; // 8:30 AM
+const openAt = E => E.wbStartsAt(46) + 3600e3; // Friday (Elite) 8:30 AM
+const thuAt = E => E.wbDayStart(46, false) + 3600e3; // Thursday (Normal) 8:30 AM
 
-test('World Boss run: 3,000 lives, boss money, 50,000 HP, loops without taking lives, summons speed up', () => {
+/** Jumps a World Boss run to the start of round r (and lets the tier for that round come out). */
+const toRound = (E, r) => { E.game.round = r - 1; E.wbNextRound(false); E.update(0.01); };
+/** Only the boss's own (summoned) balloons: round balloons have wr = their round. */
+const summoned = (E) => E.game.balloons.filter(b => !b.dead && !E.BT[b.type].wb && !b.wr).length;
+
+test('World Boss run (5.2): rounds from 1, each round pays, tier 1 on round 40 walks slowly to the END and ends the run there', () => {
   const E = loadEngine();
   E.DEV.unlockAll = true;
-  setClock(E, openAt(E));
+  setClock(E, thuAt(E));
   E.createGame({ mode: 'worldboss', wbBoss: 'wbbrood', wbMap: 'wb-lava', wbWeek: 46 });
   const g = E.game;
-  assert.deepStrictEqual([g.lives, g.cash, g.map.id], [3000, 10000, 'wb-lava']);
+  assert.deepStrictEqual([g.lives, g.cash, g.map.id, g.wb.elite], [3000, 10000, 'wb-lava', false]);
   E.startRound();
-  const boss = g.balloons[0];
-  assert.deepStrictEqual([boss.type, boss.hp, E.BT.wbbrood.r], ['wbbrood', 50000, 85], '2.5 times the Colossus (r 34)');
-  boss.dist = g.paths[0].len - 1;
+  assert.strictEqual(g.round, 1, 'PLAY starts round 1');
+  assert.ok(g.spawnQ.length > 0 && !g.balloons.some(b => E.BT[b.type].wb), 'normal round balloons, no boss yet');
+  // a cleared round: the next one starts 1.5 s later, and the round pays
+  g.spawnQ = []; g.balloons = [];
+  const cash = g.cash;
+  for (let i = 0; i < 16; i++) E.update(0.1);
+  assert.strictEqual(g.round, 2, 'the next round starts by itself');
+  assert.strictEqual(g.cash, cash + E.roundBonus(1), 'round bonus paid');
+  g.roundTime = 40; E.update(0.01);
+  assert.strictEqual(g.round, 3, 'rounds never wait more than 40 s');
+  assert.ok(!g.balloons.some(b => E.BT[b.type].wb), 'still no boss on round 3');
+  toRound(E, 40);
+  const boss = g.wb.ref;
+  assert.deepStrictEqual([boss.type, boss.hp, boss.tier, boss.skulls, E.BT.wbbrood.r], ['wbbrood', 10000, 1, 1, 85], 'round 40: tier 1, 10,000 HP, one skull');
+  const len = g.paths[0].len;
+  assert.ok(Math.abs(E.balloonSpeed(boss) * E.wbWalkTime(g.wb.boss) - len) < 1, 'a slow boss takes 12 minutes to walk the whole road');
+  boss.frozen = 5; boss.slowT = 5; boss.bslow = 0.9;
+  const d0 = boss.dist;
   E.update(0.1);
-  assert.ok(!boss.dead && boss.dist < 50, 'at the end of the road it goes round again');
-  assert.strictEqual(g.lives, 3000, 'and takes no lives');
-  const mobs = () => g.balloons.filter(b => !E.BT[b.type].wb).length;
+  assert.ok(boss.dist > d0, 'it can not be frozen or slowed');
   for (let i = 0; i < 150; i++) E.update(0.1);
-  assert.strictEqual(mobs(), 4, 'Broodmother: 4 balloons at 15 s');
+  assert.strictEqual(summoned(E), 4, 'Broodmother: 4 balloons at 15 s');
+  const r0 = g.round; g.roundTime = 40; E.update(0.01);
+  assert.ok(g.round === r0 + 1 && !boss.dead, 'rounds keep going while the boss is out');
+  assert.ok(boss.castT > 0, 'it stands still to summon');
+  const dc = boss.dist; E.update(0.5);
+  assert.strictEqual(boss.dist, dc, 'no walking while it summons');
+  for (let i = 0; i < 12; i++) E.update(0.1);
+  assert.ok(boss.dist > dc, 'then it walks on');
+  boss.dist = len - 0.1; boss.castT = 0;
+  E.update(0.1);
+  assert.ok(g.over && g.wb.done && g.wb.escaped, 'the boss reached the END: the run is over');
   assert.deepStrictEqual([E.wbSummonGap(0), E.wbSummonGap(600), E.wbSummonGap(1200), E.wbSummonGap(0, 0.6)], [15, 10, 5, 9]);
   assert.ok(Math.abs(E.wbStrength(600) - 1.1046) < 1e-3 && Math.abs(E.wbStrength(1200) - 1.2202) < 1e-3);
   assert.deepStrictEqual([E.wbMob(0), E.wbMob(17.9 * 60), E.wbMob(24 * 60), E.wbMob(32 * 60)], ['green', 'rainbow', 'blimp', 'brute']);
+  for (const m of E.WB_MAPS) {
+    const p = m.paths[0], a = p[0], z = p[p.length - 1];
+    assert.ok(a[0] !== z[0] || a[1] !== z[1], m.name + ' has an END, not a loop');
+  }
 });
 
-test('World Boss damage: defense cuts it, every point is score, best of the week is kept, the board ranks it', () => {
+test('World Boss tiers: rounds 40, 60, 80, 100, 120 with 10k-50k HP; skulls; a tier waits for the last one; pop all five to win', () => {
+  const E = loadEngine();
+  E.createProfile({ name: 'Tia' });
+  setClock(E, thuAt(E));
+  E.createGame({ mode: 'worldboss', wbBoss: 'wbbrood', wbMap: 'wb-arena', wbWeek: 46 });
+  E.startRound();
+  const g = E.game, w = g.wb;
+  toRound(E, 40);
+  E.damageBalloon(w.ref, 1e9, 'sharp', null);
+  assert.deepStrictEqual([w.tiers, w.tier, w.ref, E.wbNextTierRound(w)], [1, 1, null, 60], 'tier 1 popped: tier 2 comes on round 60');
+  toRound(E, 59);
+  assert.ok(!g.balloons.some(b => !b.dead && E.BT[b.type].wb), 'no boss on round 59');
+  toRound(E, 60);
+  const t2 = w.ref;
+  assert.deepStrictEqual([t2.tier, t2.hp, t2.skulls], [2, 20000, 2], 'round 60: tier 2, 20,000 HP, two skulls');
+  g.balloons = g.balloons.filter(b => b === t2); g.spawnQ = [];
+  E.damageBalloon(t2, 20000 * 0.4 / 0.8, 'sharp', null);
+  assert.strictEqual(t2.bossStage, 1, 'past the first skull (at 2/3)');
+  assert.strictEqual(summoned(E), 12, 'Broodmother skill: 3 summons at once');
+  assert.ok(!w.angry);
+  E.damageBalloon(t2, 20000 * 0.3 / 0.8, 'sharp', null);
+  assert.ok(t2.bossStage === 2 && w.angry, 'the last skull: angry');
+  E.damageBalloon(t2, 1e9, 'sharp', null);
+  // tier 3 is not popped by round 100: tier 4 waits, then comes as soon as tier 3 is popped
+  toRound(E, 80);
+  assert.deepStrictEqual([w.ref.tier, w.ref.hp], [3, 30000]);
+  toRound(E, 100);
+  assert.strictEqual(w.ref.tier, 3, 'tier 4 waits for tier 3');
+  E.damageBalloon(w.ref, 1e9, 'sharp', null);
+  E.update(0.01);
+  assert.deepStrictEqual([w.ref.tier, w.ref.hp], [4, 40000], 'then it comes at once');
+  E.damageBalloon(w.ref, 1e9, 'sharp', null);
+  toRound(E, 120);
+  assert.deepStrictEqual([w.ref.tier, w.ref.hp, w.ref.skulls], [5, 50000, 5]);
+  E.damageBalloon(w.ref, 1e9, 'sharp', null);
+  assert.ok(g.won && w.killed && g.over, 'all five popped: a win');
+  const h = E.store.get('wbHist', {})['46n'];
+  assert.deepStrictEqual([h.won, h.tiers, h.elite, h.d], [true, 5, false, 10000 + 20000 + 30000 + 40000 + 50000 + g.lives * 10], 'Thursday: kept as a Normal run');
+  assert.strictEqual(E.wbBoard(46, undefined, false)[0].h.won, true);
+  assert.strictEqual(E.wbBoard(46, undefined, true).length, 0, 'not on the Elite board');
+});
+
+test('World Boss skills: Gale dashes, Bastion shields; round 140 ends the run; Elite has more HP and skulls', () => {
+  const E = loadEngine();
+  E.createProfile({ name: 'Sky' });
+  setClock(E, openAt(E));
+  E.createGame({ mode: 'worldboss', wbBoss: 'wbgale', wbMap: 'wb-jungle', wbWeek: 46, wbElite: true });
+  E.startRound();
+  toRound(E, 40);
+  let b = E.game.wb.ref;
+  assert.deepStrictEqual([b.hp, b.skulls], [25000, 2], 'Elite tier 1: 2.5x HP and one more skull');
+  E.damageBalloon(b, 25000 * 0.4, 'sharp', null);
+  assert.ok(b.dashT > 0, 'Gale dashes');
+  const sp = E.balloonSpeed(b), d0 = b.dist;
+  E.update(0.1);
+  assert.ok(b.dist - d0 > sp * 0.1 * 2.5, 'three times as fast');
+  toRound(E, 140);
+  assert.ok(E.game.over && !E.game.won, 'round 140 came first: the run is over');
+  assert.strictEqual(E.store.get('wbHist', {})['46'].elite, true, 'Friday: an Elite run');
+  E.createGame({ mode: 'worldboss', wbBoss: 'wbbastion', wbMap: 'wb-frost', wbWeek: 46, wbElite: true });
+  E.startRound();
+  toRound(E, 40);
+  b = E.game.wb.ref;
+  E.damageBalloon(b, 25000 * 0.4 / 0.6, 'sharp', null);
+  assert.ok(b.shieldT > 0, 'Bastion shields');
+  const hp = b.hp;
+  E.damageBalloon(b, 1000, 'sharp', null);
+  assert.strictEqual(b.hp, hp, 'no damage through the shield');
+  for (let i = 0; i < 41; i++) E.update(0.1);
+  E.damageBalloon(b, 1000, 'sharp', null);
+  assert.ok(b.hp < hp, 'the shield lasts 4 seconds');
+});
+
+test('World Boss damage: defense cuts it, every point is score, best of the day is kept, the board ranks it', () => {
   const E = loadEngine();
   E.createProfile({ name: 'Dex' });
   setClock(E, openAt(E));
-  E.createGame({ mode: 'worldboss', wbBoss: 'wbbastion', wbMap: 'wb-arena', wbWeek: 46 });
+  const fri = { mode: 'worldboss', wbBoss: 'wbbastion', wbMap: 'wb-arena', wbWeek: 46, wbElite: true };
+  E.createGame(fri);
   E.startRound();
-  const boss = E.game.balloons[0];
+  toRound(E, 40);
+  const boss = E.game.wb.ref;
   E.damageBalloon(boss, 1000, 'sharp', null);
   assert.strictEqual(Math.round(E.game.wb.damage), 600, 'Bastion takes 40% less damage');
-  assert.strictEqual(boss.hp, 50000 - 600);
+  assert.strictEqual(boss.hp, 25000 - 600);
   E.game.lives = 1;
   const leak = E.makeBalloon('red', E.game.paths[0].len - 1, {});
   E.game.balloons.push(leak);
@@ -241,29 +349,58 @@ test('World Boss damage: defense cuts it, every point is score, best of the week
   assert.strictEqual(E.store.get('wbHist', {})[46].d, 600);
   assert.strictEqual(E.wbBoard(46)[0].d, 600);
   // a worse run doesn't replace the best
-  E.createGame({ mode: 'worldboss', wbBoss: 'wbbastion', wbMap: 'wb-arena', wbWeek: 46 });
+  E.createGame(fri);
   E.startRound();
-  E.damageBalloon(E.game.balloons[0], 100, 'sharp', null);
+  toRound(E, 40);
+  E.damageBalloon(E.game.wb.ref, 100, 'sharp', null);
   assert.strictEqual(E.wbEnd(false).best, false);
   assert.strictEqual(E.store.get('wbHist', {})[46].d, 600);
-  // killing the boss: a win, plus 10 per life left
-  E.createGame({ mode: 'worldboss', wbBoss: 'wbgale', wbMap: 'wb-jungle', wbWeek: 46 });
-  E.startRound();
-  const b = E.game.balloons[0];
-  E.damageBalloon(b, 2e6, 'sharp', null);
-  assert.ok(E.game.won && E.game.wb.killed);
-  assert.strictEqual(E.store.get('wbHist', {})[46].d, 50000 + 3000 * 10);
   assert.strictEqual(E.game.submitted, false, 'World Boss runs never go on the stage boards');
-  // 5:00 PM: a run still going ends by itself, and nothing is recorded after that
+  // a Normal run on Friday is not recorded (Normal is Thursday)
   E.createGame({ mode: 'worldboss', wbBoss: 'wbgale', wbMap: 'wb-jungle', wbWeek: 46 });
+  E.game.wb.damage = 9e6;
+  assert.strictEqual(E.wbRecord(), false, 'Normal is closed on Friday');
+  // 5:00 PM: a run still going ends by itself, and nothing is recorded after that
+  E.createGame(Object.assign({}, fri, { wbBoss: 'wbgale', wbMap: 'wb-jungle' }));
   E.startRound();
   setClock(E, E.wbEndsAt(46));
   E.update(0.1);
   assert.ok(E.game.over && E.game.wb.done, 'the run ends at 5:00 PM');
   setClock(E, E.wbEndsAt(46) + 3600e3);
-  E.createGame({ mode: 'worldboss', wbBoss: 'wbgale', wbMap: 'wb-jungle', wbWeek: 46 });
+  E.createGame(Object.assign({}, fri, { wbBoss: 'wbgale', wbMap: 'wb-jungle' }));
   E.game.wb.damage = 9e6;
   assert.strictEqual(E.wbRecord(), false, 'closed: not recorded');
+});
+
+test('World Boss days: Normal on Thursday, Elite on Friday; the champion comes from Elite, or Normal if nobody played Elite', () => {
+  const E = loadEngine();
+  const thu = E.wbDayStart(46, false), fri = E.wbDayStart(46, true);
+  assert.strictEqual(new Date(thu).toISOString(), '2026-11-25T23:30:00.000Z', 'Thursday 26 Nov, 7:30 AM in the Philippines');
+  assert.deepStrictEqual([E.wbOpenMode(thu - 1), E.wbOpenMode(thu), E.wbOpenMode(E.wbDayEnd(46, false)), E.wbOpenMode(fri), E.wbOpenMode(E.wbEndsAt(46))],
+    ['', 'normal', '', 'elite', '']);
+  assert.deepStrictEqual([E.wbNextStart(thu - 1).elite, E.wbNextStart(thu + 1).elite, E.wbNextStart(E.wbEndsAt(46)).at], [false, true, E.wbDayStart(47, false)]);
+  const pl = (name, key, h) => ({ key: 'k-' + name, id: { name, uid: name.toLowerCase().padEnd(10, '0'), tag: '1' }, wbHist: { [key]: h }, me: false });
+  const n1 = pl('Norm', '46n', { d: 9e6, won: true, t: 600, lives: 3000, at: thu + 1000 });
+  const e1 = pl('Elit', '46', { d: 5000, at: fri + 1000 });
+  const after = E.wbEndsAt(46) + 60e3;
+  assert.strictEqual(E.wbChamp([n1, e1], after).p.id.name, 'Elit', 'Elite #1 is the champion, even with less');
+  assert.deepStrictEqual([E.wbChamp([n1], after).p.id.name, E.wbChamp([n1], after).elite], ['Norm', false], 'nobody played Elite: Normal #1');
+  assert.strictEqual(E.wbBoard(46, [n1, e1], false).length, 1, 'each day has its own board');
+  const late = pl('Late', '46n', { d: 9e9, at: fri + 1000 });
+  assert.strictEqual(E.wbBoard(46, [late], false).length, 0, 'a Normal score set on Friday does not count');
+});
+
+
+test('World Boss board: boss kills first, then fastest, then most lives; the rest by damage', () => {
+  const E = loadEngine();
+  const st = E.wbStartsAt(46), at = st + 1000;
+  const pl = (name, h) => ({ key: 'k-' + name, id: { name, uid: name.toLowerCase().padEnd(10, '0'), tag: '1' }, wbHist: { 46: Object.assign({ at }, h) }, me: false });
+  const players = [pl('Dmg', { d: 9e6 }), pl('Less', { d: 5000 }), pl('Slow', { d: 51000, won: true, t: 900, lives: 100 }),
+    pl('Fast', { d: 50100, won: true, t: 600, lives: 10 }), pl('More', { d: 50500, won: true, t: 600, lives: 50 })];
+  assert.deepStrictEqual(Array.from(E.wbBoard(46, players), x => x.p.id.name), ['More', 'Fast', 'Slow', 'Dmg', 'Less']);
+  assert.ok(E.compareWb({ d: 1, won: true, t: 2000, lives: 1 }, { d: 9e6 }) < 0, 'any kill beats any damage');
+  const m = E.mergeSaves({ updated: 1, wbHist: { 46: { d: 9e6, at } } }, { updated: 2, wbHist: { 46: { d: 50010, won: true, t: 1500, lives: 1, at } } });
+  assert.strictEqual(m.wbHist[46].won, true, 'merging two PCs keeps the kill');
 });
 
 test('World Boss schedule: open Fridays 7:30 AM to 5:00 PM PH time; the champion is announced at 5:01 PM', () => {

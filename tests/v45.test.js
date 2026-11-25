@@ -85,23 +85,24 @@ test('rank arrows compare with the board\'s previous order on this PC', () => {
   assert.deepStrictEqual({ ...E.rankMoves('daily:2026-11-12', order) }, { b: 0, c: 0, a: 0 }, 'each board has its own memory');
 });
 
-test('Daily board: wins first, then most lives, then fastest; each player keeps their best try', () => {
+test('Daily board: wins first, then fastest, then most lives; each player keeps their best try', () => {
   const E = loadEngine();
   E.createProfile({ name: 'Dee' });
   const day = '2026-11-12', g = (o) => Object.assign({ daily: day, won: false, round: 10, lives: 0, clock: 500 }, o);
   assert.strictEqual(E.saveDailyRun(g({ round: 12 })), true, 'first try is kept');
   assert.strictEqual(E.saveDailyRun(g({ round: 9 })), false, 'a worse loss is not');
   assert.strictEqual(E.saveDailyRun(g({ won: true, lives: 50, clock: 900 })), true, 'a win beats any loss');
-  assert.strictEqual(E.saveDailyRun(g({ won: true, lives: 40, clock: 100 })), false, 'fewer lives loses, even when faster');
-  assert.strictEqual(E.saveDailyRun(g({ won: true, lives: 50, clock: 800 })), true, 'same lives, faster');
+  assert.strictEqual(E.saveDailyRun(g({ won: true, lives: 40, clock: 100 })), true, 'faster wins, even with fewer lives');
+  assert.strictEqual(E.saveDailyRun(g({ won: true, lives: 30, clock: 100 })), false, 'same time, fewer lives');
+  assert.strictEqual(E.saveDailyRun(g({ won: true, lives: 45, clock: 100 })), true, 'same time, more lives');
   const once = g({ won: true, lives: 99, clock: 1 });
   assert.strictEqual(E.saveDailyRun(once), true);
   assert.strictEqual(E.saveDailyRun(once), false, 'one game counts once (a later freeplay loss adds nothing)');
   assert.strictEqual(E.localPlayers()[0].dailyRuns[day].lives, 99);
   const dr = (won, lives, clock, round = 30) => ({ [day]: { won, lives, clock, round, at: 1 } });
   const players = [P('Lo', {}, { dailyRuns: dr(false, 0, 300, 25) }), P('Hi', {}, { dailyRuns: dr(true, 80, 700) }), P('Mid', {}, { dailyRuns: dr(true, 80, 600) }),
-    P('Win', {}, { dailyRuns: dr(true, 20, 100) }), P('None')];
-  assert.deepStrictEqual(Array.from(E.dailyBoard(day, players), x => x.p.id.name), ['Mid', 'Hi', 'Win', 'Lo']);
+    P('Win', {}, { dailyRuns: dr(true, 20, 100) }), P('Tie', {}, { dailyRuns: dr(true, 90, 600) }), P('None')];
+  assert.deepStrictEqual(Array.from(E.dailyBoard(day, players), x => x.p.id.name), ['Win', 'Tie', 'Mid', 'Hi', 'Lo']);
   assert.strictEqual(E.dailyBoard('2026-11-11', players).length, 0, 'another day has its own board');
 });
 
@@ -207,7 +208,7 @@ test('mergeSaves keeps progress from both PCs: larger counters, best runs, more 
   assert.strictEqual(m.towers.dart.total, 900, 'the copy that earned more tower XP');
   assert.ok(m.towers.bomb && m.towers.tack);
   assert.deepStrictEqual(Object.keys(m.daily).sort(), ['2026-11-10', '2026-11-11']);
-  assert.strictEqual(m.dailyRuns['2026-11-10'].lives, 90);
+  assert.strictEqual(m.dailyRuns['2026-11-10'].clock, 5, 'the faster daily win');
   assert.strictEqual(m.updated, 200);
 });
 

@@ -414,7 +414,7 @@ function mergeSaves(a, b) {
     const wh = out.wbHist = Object.assign({}, obj(older.wbHist), obj(newer.wbHist));
     for (const [k, h] of Object.entries(obj(older.wbHist)) as any) {
         const n = obj(newer.wbHist)[k];
-        if (n && (+h.d || 0) > (+n.d || 0))
+        if (n && compareWb(h, n) < 0)
             wh[k] = h;
     }
     // game history: both lists, the newest 30
@@ -593,7 +593,7 @@ const HISTORY_MAX = 30;
 function historyEntry(g, rank = 0, at = Date.now()) {
     return { id: at.toString(36) + Math.random().toString(36).slice(2, 6), at, map: g.map.id, diff: g.diffKey, mode: g.mode, daily: !!g.daily,
         wb: g.wb ? g.wb.boss.id : '', won: !!g.won, round: g.round, lives: Math.max(0, g.lives), pops: g.pops || 0, clock: Math.round(g.clock || 0),
-        wbTime: g.wb ? Math.round(g.wb.t || 0) : 0, score: g.wb && typeof wbScore === 'function' ? wbScore(g) : 0, rank: rank || 0 };
+        wbTime: g.wb ? Math.round(g.wb.t || 0) : 0, wbElite: !!(g.wb && g.wb.elite), wbTiers: g.wb ? g.wb.tiers || 0 : 0, score: g.wb && typeof wbScore === 'function' ? wbScore(g) : 0, rank: rank || 0 };
 }
 function historyList() { const h = store.get('history', []); return Array.isArray(h) ? h : []; }
 function addHistory(e) { store.set('history', [e, ...historyList().filter(x => x && x.id !== e.id)].slice(0, HISTORY_MAX)); }
@@ -996,6 +996,27 @@ const CROWN_SVG = `<g transform="translate(50 15)"><path d="M-19 9 L-21 -7 L-10 
   <rect x="-19" y="6" width="38" height="5" rx="1.5" fill="#ffb300" stroke="#7a5600" stroke-width="2"/><circle cy="-12" r="3" fill="#ff5252" stroke="#7a5600" stroke-width="1.2"/>
   <circle cx="-21" cy="-7" r="2.4" fill="#40c4ff"/><circle cx="21" cy="-7" r="2.4" fill="#40c4ff"/></g>`;
 let SVG_UID = 0;
+/* 5.1.2: a player not seen for 3 days shows the idle photo instead of their animal (border and crown stay). */
+const IDLE_MS = 3 * 86400000, IDLE_IMG = 'assets/ui/idle-avatar.png';
+let idleSeen = null, idleSeenAt = 0;
+function isIdle(uid, now = Date.now()) {
+    if (!uid)
+        return false;
+    try {
+        if (getId().uid === uid && loggedIn())
+            return false;
+    }
+    catch (e) { }
+    if (!idleSeen || now - idleSeenAt > 5000) { // read the shared folder copy at most every 5 s, not once per avatar
+        idleSeen = new Map();
+        for (const x of sharedCache().players)
+            if (x && x.uid)
+                idleSeen.set(x.uid, Math.max((x.inuse && +x.inuse.at) || 0, +x.updated || 0));
+        idleSeenAt = now;
+    }
+    const seen = idleSeen.get(uid) || 0;
+    return seen > 0 && now - seen >= IDLE_MS;
+}
 function avatarSVG(o, size = 64) {
     const u = 'av' + (++SVG_UID), A = ANIMALS.find(a => a.id === o.animal) || ANIMALS[0], bg = AVATAR_BGS.find(b => b.id === o.bg) || AVATAR_BGS[0];
     const own = borderById(o.border), bd = o.uid && o.uid === WB_CHAMP_UID ? borderById('wblegend') : own.special ? BORDERS[0] : own, fem = o.style === 'f', fur = A.fur, inner = A.inner, earC = A.earCol || fur;
@@ -1099,8 +1120,10 @@ function avatarSVG(o, size = 64) {
     if (bd.storm)
         bx = stormBorder();
     const vb = bd.storm ? '-14 -14 128 128' : bd.spikes ? '-6 -6 112 112' : '0 0 100 100';
-    const crown = o.uid && o.uid === CROWN_UID ? CROWN_SVG : '';
-    return `<svg class="avatar${crown ? ' crowned' : ''}${bd.storm ? ' storm' : ''}" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${vb}" role="img" aria-label="${A.name} avatar${crown ? ', Global #1' : ''}">${bgx}<g clip-path="url(#${u}c)">${ears}${head}${face}${eyes}${nose}${top}</g>${bx}${crown}</svg>`;
+    const crown = o.uid && o.uid === CROWN_UID ? CROWN_SVG : '', idle = isIdle(o.uid);
+    return `<svg class="avatar${crown ? ' crowned' : ''}${bd.storm ? ' storm' : ''}" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${vb}" role="img" aria-label="${idle ? 'Idle' : A.name} avatar${crown ? ', Global #1' : ''}">${bgx}<g clip-path="url(#${u}c)">${idle
+        ? `<image href="${IDLE_IMG}" x="5" y="5" width="90" height="90" preserveAspectRatio="xMidYMid slice"/>`
+        : ears + head + face + eyes + nose + top}</g>${bx}${crown}</svg>`;
 }
 /** The World Boss Legend border: a black ring with blood-red fangs and a pulsing red glow, and lightning bolts between
     the fangs that flash. Fangs and bolts turn slowly round the avatar; the face stays still (css .bdspin, .bdglow, .bdbolt). */

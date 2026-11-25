@@ -724,9 +724,26 @@ input.tagin{width:84px!important;letter-spacing:2px}
 .wbmaps{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .wbmaps div{display:flex;flex-direction:column;gap:3px}
 .wbmaps canvas{width:100%;height:auto;border-radius:8px;border:1px solid var(--line2)}
-/* the World Boss always summons, so its health bar has no skulls */
-#bossbar.wb .skull,#bossbar.wb #bossMarks{display:none}
+/* World Boss (5.2): tiers and skulls; the bar runs red to green like a fuel gauge, and the last skull is on fire */
 #bossbar.wb{border-color:#ffd93d}
+#bossbar.wb.elite{border-color:#ff5252;box-shadow:0 0 12px rgba(255,82,82,.35)}
+#bossbar.wb .bar{height:16px;border:2px solid #6fa8c8;background:#3a2a20}
+#bossbar.wb .bar i#bossHp{background:linear-gradient(90deg,#d32f2f,#f57c00 22%,#fbc02d 45%,#c0ca33 65%,#7cb342 85%,#43a047);background-repeat:no-repeat}
+#bossbar.wb #bossMarks .bmark{width:22px;height:22px}
+#bossMarks .bmark.fire{filter:drop-shadow(0 0 5px #ff6d00) drop-shadow(0 0 2px #ff3d00) sepia(1) saturate(4) hue-rotate(-20deg)}
+#bossMarks .bmark.fire.past{filter:grayscale(1);opacity:.35}
+/* the boss's tier in the boss bar: 5 stars, one lit for each tier that has come (tier 3 = 3 lit stars) */
+.wbstars{display:inline-flex;gap:1px;margin-left:4px;letter-spacing:0}
+.wbstars i{font-style:normal;font-size:15px;line-height:1;color:#4a3d5e;text-shadow:0 1px 1px rgba(0,0,0,.6)}
+.wbstars i.lit{color:#ffd93d;text-shadow:0 0 6px rgba(255,217,61,.8),0 1px 1px rgba(0,0,0,.6)}
+.wbstars i.now{animation:wbstar 1.2s ease-in-out infinite}
+#bossbar.elite .wbstars i.lit{color:#ff5252;text-shadow:0 0 6px rgba(255,82,82,.85),0 1px 1px rgba(0,0,0,.6)}
+@keyframes wbstar{50%{transform:scale(1.3)}}
+.wbelite{font-style:normal;background:#b71c1c;color:#fff;border-radius:4px;padding:0 5px;font-size:10px;letter-spacing:1px}
+.wbnext{font-size:10px;color:#ffcc80;letter-spacing:0;font-weight:700}
+.wbtabs{display:inline-flex;gap:4px;margin-left:auto}
+.wbtab{border:1px solid var(--line2);background:transparent;color:inherit;border-radius:8px;padding:3px 10px;font-weight:800;font-size:12px;cursor:pointer}
+.wbtab.on{background:#ffd93d;color:#3a2a00;border-color:#ffd93d}
 /* Chat */
 .card.chatcard{width:min(680px,100%);display:flex;flex-direction:column}
 .clist{height:min(52vh,460px);overflow:auto;display:flex;flex-direction:column;gap:2px;padding:10px 12px;background:#151b2a;border:1px solid var(--line);border-radius:12px}

@@ -106,9 +106,10 @@ function onGameOver() {
     ${runLine(res)}${txpLine()}
     <div class="row"><button class="btn" data-act="menu"><img class="icon" src="assets/ui/home.svg" alt="">Home</button><button class="btn primary big" data-act="retry"><img class="icon" src="assets/ui/restart.svg" alt="">Try again</button></div>`);
 }
-/** A World Boss run ended (boss killed, lives gone, or the player left): the result card, unless leaving for home. */
+/** A World Boss run ended (all tiers popped, the boss reached the END, lives gone, time up, or the player left): the
+    result card, unless leaving for home. */
 function onWorldBossEnd(res) {
-    const g = game, w = g.wb, k = w.k, board = wbBoard(k), mine = board.find(x => x.p.me);
+    const g = game, w = g.wb, k = w.k, board = wbBoard(k, undefined, w.elite), mine = board.find(x => x.p.me);
     afterGameEnd();
     if (UI.leavingWb)
         return;
@@ -116,21 +117,23 @@ function onWorldBossEnd(res) {
     const mins = Math.max(1, Math.round(w.t / 60));
     openModal('end', `${res.killed ? `<div class="confetti">${Array.from({ length: 24 }, (_, i) => `<i style="--i:${i};--c:${['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ce93d8'][i % 5]}"></i>`).join('')}</div>` : ''}
     <div style="text-align:center"><img class="wbart big" src="assets/balloons/${w.boss.id}.svg" alt=""><h2>${res.killed ? esc(w.boss.name) + ' defeated!' : 'World Boss run over'}</h2>
-    <p class="lead">${res.killed ? 'You popped the World Boss! Kill bonus: ' + (WB_KILL_BONUS * Math.max(0, g.lives)).toLocaleString() + ' (' + WB_KILL_BONUS + ' per life left).' : 'The balloons broke through after ' + mins + ' min.'}</p></div>
-    <div class="bigstats"><div><b>${res.score.toLocaleString()}</b><span>Score (damage)</span></div><div><b>${mine ? '#' + mine.rank : '—'}</b><span>Rank this week</span></div><div><b>${mine ? mine.d.toLocaleString() : '0'}</b><span>Your best this week</span></div></div>
-    ${res.best ? '<p class="runline"><b class="newbest">New best this week!</b></p>' : ''}${txpLine()}
+    <p class="lead">${res.killed ? 'You popped all ' + WB_TIERS.length + ' tiers! Kill bonus: ' + (WB_KILL_BONUS * Math.max(0, g.lives)).toLocaleString() + ' (' + WB_KILL_BONUS + ' per life left).'
+        : w.escaped ? 'Tier ' + w.tier + ' reached the END after ' + mins + ' min.' : g.round >= WB_LAST_ROUND ? 'Round ' + WB_LAST_ROUND + ' came: all ' + WB_TIERS.length + ' tiers must be popped before it.' : 'The balloons broke through on round ' + g.round + '.'}</p></div>
+    <div class="bigstats">${res.killed ? `<div><b>${fmtClock(w.t)}</b><span>Time · ${Math.max(0, g.lives).toLocaleString()} lives</span></div>` : `<div><b>${w.tiers} / ${WB_TIERS.length}</b><span>Tiers popped · ${res.score.toLocaleString()} damage</span></div>`}<div><b>${mine ? '#' + mine.rank : '—'}</b><span>Rank today (${w.elite ? 'Elite' : 'Normal'})</span></div><div><b>${mine ? wbResult(mine) : '0'}</b><span>Your best today</span></div></div>
+    ${res.best ? '<p class="runline"><b class="newbest">New best today!</b></p>' : ''}${txpLine()}
     <div class="row"><button class="btn" data-act="menu"><img class="icon" src="assets/ui/home.svg" alt="">Home</button><button class="btn primary big" data-act="wbfight">Fight again</button></div>`);
 }
 /** Starts this week's World Boss fight. */
 function startWorldBoss() {
     if (!loggedIn())
         return openLogin();
-    if (!wbOpen()) {
-        toast('The World Boss opens on Friday at 7:30 AM (PH time): ' + wbOpensTxt() + ' your time.', 'warn');
+    const mode = wbOpenMode();
+    if (!mode) {
+        toast('The World Boss (' + (wbNextStart().elite ? 'Elite' : 'Normal') + ') opens ' + wbOpensTxt() + ' your time (7:30 AM PH time).', 'warn');
         return;
     }
     const k = wbWeek(), p = wbPick(k);
-    startGame({ mode: 'worldboss', wbBoss: p.boss.id, wbMap: p.map.id, wbWeek: k });
+    startGame({ mode: 'worldboss', wbBoss: p.boss.id, wbMap: p.map.id, wbWeek: k, wbElite: mode === 'elite' });
 }
 function onVictory() {
     UI.paused = true;
@@ -224,10 +227,10 @@ function refreshHUD(force?) {
     if (!g)
         return;
     $('sLives').textContent = Math.max(0, g.lives);
-    if (g.wb) { // World Boss: the fight's clock instead of a round count
-        $('sRoundLbl').textContent = 'TIME';
-        $('sRound').textContent = fmtClock(g.wb.t);
-        $('sRoundOf').textContent = '';
+    if (g.wb) { // World Boss: rounds, up to the last one (140)
+        $('sRoundLbl').textContent = 'ROUND';
+        $('sRound').textContent = g.round;
+        $('sRoundOf').textContent = '/' + WB_LAST_ROUND;
     }
     else {
         $('sRoundLbl').textContent = 'ROUND';
@@ -238,7 +241,7 @@ function refreshHUD(force?) {
     $('sClockBox').classList.toggle('hide', !!g.wb);
     $('sClock').textContent = fmtClock(g.clock);
     $('sClockBox').classList.toggle('fast', !UI.paused && g.inRound && UI.speed > 1);
-    $('sClockBox').classList.toggle('stopped', !!(UI.paused || UI.modal));
+    $('sClockBox').classList.toggle('stopped', !!(UI.paused || UI.modal || !g.inRound));
     $('gSound').querySelector('img').src = 'assets/ui/' + (SETTINGS.sound ? 'sound-on' : 'sound-off') + '.svg';
     const rb = $('roundBtn');
     if (!g.inRound) {
@@ -269,21 +272,39 @@ function refreshHUD(force?) {
         }).join('');
     }
     $('nextBox').classList.toggle('hide', g.inRound || !!g.wb);
-    const boss = g.balloons.find(b => BT[b.type].boss && !b.dead);
-    $('bossbar').classList.toggle('on', !!boss);
-    $('bossbar').classList.toggle('wb', !!(boss && BT[boss.type].wb));
-    if (boss && BT[boss.type].wb) { // World Boss: it always summons, so no skulls; remaining HP and the damage so far
-        $('bossName').textContent = BT[boss.type].name.toUpperCase();
-        $('bossHp').style.width = Math.max(0, 100 * boss.hp / boss.maxHp) + '%';
-        if ($('bossMarks').dataset.k !== 'wb') {
-            $('bossMarks').dataset.k = 'wb';
-            $('bossMarks').innerHTML = '';
+    const boss = g.balloons.find(b => BT[b.type].boss && !b.dead), wbOn = !!(g.wb && g.inRound && !g.over);
+    $('bossbar').classList.toggle('on', !!boss || wbOn);
+    $('bossbar').classList.toggle('wb', wbOn);
+    $('bossbar').classList.toggle('elite', wbOn && !!g.wb.elite);
+    if (wbOn) { // World Boss (5.2): name, 5 stars (one lit for each tier that has come), skulls, health, next tier
+        const w = g.wb, b = w.ref && !w.ref.dead ? w.ref : null, next = wbNextTierRound(w);
+        const nameKey = w.tier + ':' + w.tiers + ':' + (b ? 1 : 0) + ':' + g.round;
+        if ($('bossName').dataset.k !== nameKey) {
+            $('bossName').dataset.k = nameKey;
+            $('bossName').innerHTML = esc(BT[w.boss.id].name.toUpperCase()) + (w.elite ? ' <i class="wbelite">ELITE</i>' : '')
+                + ' <span class="wbstars" title="Boss tier ' + Math.max(1, w.tier) + ' of ' + WB_TIERS.length + '">'
+                + WB_TIERS.map((_, i) => `<i class="${i < w.tier ? 'lit' : ''}${i === w.tier - 1 && b ? ' now' : ''}" title="Tier ${i + 1} (round ${WB_TIER_ROUNDS[i]})${i < w.tiers ? ': popped' : i === w.tier - 1 && b ? ': fighting now' : ''}">★</i>`).join('')
+                + '</span>';
         }
-        $('bossTxt').textContent = Math.ceil(boss.hp).toLocaleString() + ' / ' + boss.maxHp.toLocaleString() + ' · damage ' + Math.round(g.wb.damage).toLocaleString();
+        const pct = b ? Math.max(0, 100 * b.hp / b.maxHp) : 0;
+        $('bossHp').style.width = pct + '%';
+        $('bossHp').style.backgroundSize = pct > 0 ? (10000 / pct) + '% 100%' : '';
+        const key = b ? 'wb' + w.tier + ':' + b.bossStage : 'wbx';
+        if ($('bossMarks').dataset.k !== key) {
+            $('bossMarks').dataset.k = key;
+            $('bossMarks').innerHTML = !b ? '' : Array.from({ length: b.skulls }, (_, i) => {
+                const f = 1 - (i + 1) / (b.skulls + 1), last = i === b.skulls - 1;
+                return `<i class="bmark${b.bossStage > i ? ' past' : b.bossStage === i ? ' next' : ''}${last ? ' fire' : ''}" style="left:${f * 100}%" title="${last ? 'Gets angry' : 'Uses its skill'} at ${Math.round(f * 100)}% health">${SKULL}</i>`;
+            }).join('');
+        }
+        $('bossTxt').textContent = b ? Math.ceil(b.hp).toLocaleString() + ' / ' + b.maxHp.toLocaleString() + (b.shieldT > 0 ? ' · SHIELD' : w.angry ? ' · ANGRY' : '') + (next ? ' · next boss R' + next : '')
+            : next ? 'Next boss on round ' + next + (next > g.round ? ' (in ' + (next - g.round) + ')' : '') : '';
     }
     else if (boss) {
         $('bossName').textContent = 'COLOSSUS';
+        $('bossName').dataset.k = '';
         $('bossHp').style.width = Math.max(0, 100 * boss.hp / boss.maxHp) + '%';
+        $('bossHp').style.backgroundSize = '';
         // a skull at each health mark where the Colossus summons minions (75%, 50%, 25%); dimmed once passed
         const marks = BOSS_MARKS.map((f, i) => `<i class="bmark${boss.bossStage > i ? ' past' : boss.bossStage === i ? ' next' : ''}" style="left:${f * 100}%" title="Summons minions at ${Math.round(f * 100)}% health">${SKULL}</i>`).join('');
         if ($('bossMarks').dataset.k !== String(boss.bossStage)) {
@@ -1992,7 +2013,7 @@ function dailyTable(players) {
     <p class="muted small dsub">${esc(m.name)} · ${DIFF[cfg.diffKey].name} · ${MODES[cfg.mode].name}</p>
     <div class="tscroll"><table><thead><tr><th></th><th class="l">Top ${DAILY_SIZE} players</th><th>Result</th><th>Lives</th><th>Time</th></tr></thead>
     <tbody>${rows || `<tr><td colspan="5" class="empty muted small">Nobody has played this daily challenge yet.</td></tr>`}</tbody></table></div>
-    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${list.length}` : !isToday ? 'You didn\'t play this day' : 'Play today\'s daily challenge to rank'} · wins first, then most lives, then fastest${dailyOff() ? ' · no daily challenge at the weekend' : ''}</div></div>`;
+    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${list.length}` : !isToday ? 'You didn\'t play this day' : 'Play today\'s daily challenge to rank'} · wins first, then fastest, then most lives${dailyOff() ? ' · no daily challenge at the weekend' : ''}</div></div>`;
 }
 /** 5.1.1: Global and Daily show the top 5; places 6–10 scroll. The box is cut just under the 5th row (measured, since
     row heights follow the font); while the home page is hidden the CSS height is used. */
@@ -2344,8 +2365,8 @@ function openProfileCard(key = ACTIVE_KEY) {
       <div><b>${P.bosses}</b><span>Bosses defeated</span></div>
       <div><b>${hrs ? hrs + 'h ' : ''}${mins}m</b><span>Time played</span></div>
       <div><b>${fav && TD[fav[0]] ? TD[fav[0]].name.split(' ')[0] : '—'}</b><span>Favourite tower</span></div>
-      <div><b>${wbScoreOf(pl, wbWeek()).toLocaleString()}</b><span>World Boss damage (this week)</span></div>
-      <div><b>${Math.max(0, ...Object.keys(pl.wbHist || {}).map(k => wbScoreOf(pl, +k))).toLocaleString()}</b><span>World Boss best ever</span></div>
+      <div><b>${Math.max(wbScoreOf(pl, wbWeek(), true), wbScoreOf(pl, wbWeek(), false)).toLocaleString()}</b><span>World Boss damage (this week)</span></div>
+      <div><b>${Math.max(0, ...Object.keys(pl.wbHist || {}).map(k => wbScoreOf(pl, parseInt(k), !k.endsWith('n')))).toLocaleString()}</b><span>World Boss best ever</span></div>
     </div>
     <h3 class="sub">${me ? 'Tower levels' : 'Top towers'}</h3><div class="tlevels">${towers.map(x => `<div><canvas data-tw="${x.t}" width="56" height="56"></canvas><b>Lv ${towerLevelOf(x.total)}</b><span>${TD[x.t].name}</span></div>`).join('')}</div>
     <h3 class="sub">Best runs</h3>${best.length ? `<div class="bestlist">${best.map(({ r, rank }) => { const m = MAPS.find(x => x.id === r.map); return `<div><span>${esc(m ? m.name : r.map)} · ${DIFF[r.diff] ? DIFF[r.diff].name : esc(r.diff)}${rank && rank <= 3 ? ' ' + rankBadge(rank, 18) : ''}</span><b>${r.cleared ? (r.livesLost ? 'Cleared · ' + r.livesLost + ' lost' : 'Perfect') + ' · ' + fmtClock(r.clock) : 'Round ' + r.round}${rank ? ' · #' + rank : ''}</b></div>`; }).join('')}</div>` : '<p class="muted" style="margin:0">No finished runs yet.</p>'}
@@ -2358,24 +2379,28 @@ function openProfileCard(key = ACTIVE_KEY) {
 /* ---------- World Boss: banner, damage board, info ---------- */
 function wbImg(id, cls = 'wbart') { return `<img class="${cls}" src="assets/balloons/${id}.svg" alt="">`; }
 function wbInfoHTML() {
-    const k = wbWeek(), p = wbPick(k);
-    return `<div class="wbinfo-now">${wbImg(p.boss.id, 'wbart mid')}<div><b>${wbOpen() ? 'Now' : 'Next'}: ${esc(p.boss.name)} on ${esc(p.map.name)}</b>
-      <span class="muted">${esc(p.boss.build)} · ${wbOpen() ? 'open now, ends ' + new Date(wbEndsAt(k)).toLocaleString(undefined, { weekday: 'long', hour: 'numeric', minute: '2-digit' }) + ' (your time) · ' + wbLeft(wbEndsAt(k)) + ' left' : 'opens ' + wbOpensTxt() + ' (your time) · in ' + wbLeft(wbStartsAt(k))}</span></div></div>
+    const k = wbWeek(), p = wbPick(k), mode = wbOpenMode(), nx = wbNextStart();
+    const tierHp = (elite) => WB_TIERS.map((t, i) => wbTierStats(i + 1, elite, p.boss).hp.toLocaleString()).join(' · ');
+    return `<div class="wbinfo-now">${wbImg(p.boss.id, 'wbart mid')}<div><b>${mode ? 'Now (' + (mode === 'elite' ? 'Elite' : 'Normal') + ')' : 'Next (' + (nx.elite ? 'Elite' : 'Normal') + ')'}: ${esc(p.boss.name)} on ${esc(p.map.name)}</b>
+      <span class="muted">${esc(p.boss.build)} · ${mode ? 'open now, ends ' + new Date(wbOpenEnd()).toLocaleString(undefined, { weekday: 'long', hour: 'numeric', minute: '2-digit' }) + ' (your time) · ' + wbLeft(wbOpenEnd()) + ' left' : 'opens ' + wbOpensTxt() + ' (your time) · in ' + wbLeft(nx.at)}</span></div></div>
     <ul>
       <li>Once a week, everyone fights the same <b>World Boss</b> on the same map. The boss and the map are picked at random each week, never the same pair twice in a row.</li>
-      <li>The fight is open every <b>Friday from 7:30 AM to 5:00 PM Philippine time</b>. A run still going at 5:00 PM ends, and its damage counts.</li>
-      <li>At <b>5:01 PM</b> the <b>World Boss Champion</b> (the most damage) is announced to every player, even in the middle of a game (it pauses). Everyone also gets a notification with the top 3.</li>
-      <li>You start with the boss's lives (<b>${p.boss.lives.toLocaleString()}</b> this week) and its start money. Press <b>PLAY</b> to bring the boss in.</li>
-      <li>The boss is 2.5 times the size of the Colossus and has <b>${p.boss.hp.toLocaleString()} HP</b> this week (each boss's HP is in the table below). It comes out of the hole and walks the loop round and round, and never takes lives. Its balloons go once round and drop into the hole: each one that gets there takes lives.</li>
-      <li>It summons balloons every <b>15 seconds</b>, every <b>10 seconds</b> after 10 minutes, and every <b>5 seconds</b> after 20 minutes. They get <b>1% stronger every minute</b> (about 1.1x at 10 minutes, 1.2x at 20, 1.35x at 30), and tougher kinds come in over time: ceramics from 18 minutes, blimps from 24, Brute Blimps from 32. Balloons that reach the end take lives.</li>
-      <li>Every 30 seconds is a <b>payday</b>: +$${WB_PAY_BONUS}, Gold Mine income, and XP for you and your towers.</li>
-      <li>Your <b>score is the damage you deal</b>. Your best run of the day counts on the World Boss board, at the bottom of the leaderboards. If you pop the boss, you also get ${WB_KILL_BONUS.toLocaleString()} points per life left.</li>
+      <li>It is fought twice, both days from <b>7:30 AM to 5:00 PM Philippine time</b>: <b>Normal on Thursday</b> and <b>Elite on Friday</b>. Each day has its own Top 10 board. A run still going at 5:00 PM ends, and its damage counts.</li>
+      <li>At <b>5:01 PM on Friday</b> the <b>World Boss Champion</b> is announced to every player, even in the middle of a game (it pauses): #1 on the Elite board (or on the Normal board if nobody played Elite). Everyone also gets a notification with the top 3.</li>
+      <li>You start with the boss's lives (<b>${p.boss.lives.toLocaleString()}</b> this week) and its start money. Press <b>PLAY</b> to start round 1.</li>
+      <li>It is played in <b>rounds</b>, like a normal game. The next round starts by itself as soon as this round's balloons are popped (or after ${WB_ROUND_MAX} seconds), and <b>rounds keep going while a boss is out</b>. Every round pays its round bonus and Gold Mine income, so farms keep making money.</li>
+      <li>The boss comes in <b>${WB_TIERS.length} tiers</b>, one every 20 rounds: on <b>rounds ${WB_TIERS_TXT()}</b>. A tier only comes once the one before it is popped. <b>Pop all ${WB_TIERS.length} before round ${WB_LAST_ROUND}</b> to win. The stars on the boss bar show its tier.</li>
+      <li>Each tier walks the road very slowly towards the <b>END</b>, and stands still for a moment every time it summons. If it gets there, <b>the run is over</b>. Later tiers have more HP and walk a little faster. Tier HP this week, Normal: <b>${tierHp(false)}</b>. Elite: <b>${tierHp(true)}</b>, and it walks 15% faster.</li>
+      <li><b>Skulls</b> on its health bar: when its health drops past one it uses its skill (this week: <b>${esc(WB_SKILLS[p.boss.skill] || '')}</b>). At the last, flaming skull it gets <b>angry</b>: 25% faster, and it summons more often. Elite has one more skull on every tier.</li>
+      <li>The boss can't be frozen, stunned or slowed. Towers with extra damage to blimps do that extra damage to it too.</li>
+      <li>It summons balloons every <b>15 seconds</b>, every <b>10 seconds</b> after 10 minutes, and every <b>5 seconds</b> after 20 minutes. They get <b>1% stronger every minute</b>, and tougher kinds come in over time: ceramics from 18 minutes, blimps from 24. Balloons that reach the END take lives.</li>
+      <li><b>Ranking:</b> popping all ${WB_TIERS.length} tiers ranks first, then the <b>fastest</b>, then the <b>most lives left</b>. Runs that don't pop all ${WB_TIERS.length} rank below every win, by the <b>damage you deal</b>. Your best run of the day counts on that day's board, at the bottom of the leaderboards.</li>
       <li>The <b>Champion</b> wears the exclusive <b>World Boss Legend</b> border for 7 days, until the next champion is announced. Nobody else can wear it.</li>
       <li>World Boss runs don't count on the tier or stage boards, and they can't be saved half-way: your damage so far always counts.</li>
     </ul>
     <h3>The four bosses</h3>
-    <table class="wbtable"><thead><tr><th></th><th class="l">Boss</th><th>Speed</th><th>Defense</th><th>HP</th><th>Summons</th><th>Lives</th><th>Start money</th></tr></thead>
-    <tbody>${WB_BOSSES.map(b => `<tr><td>${wbImg(b.id, 'wbart sm')}</td><td class="l"><b>${esc(b.name)}</b><small class="muted">${esc(b.build)}</small></td><td>${b.speed}</td><td>${esc(b.defTxt)}</td><td>${b.hp.toLocaleString()}</td><td>${esc(b.summonTxt)}</td><td>${b.lives.toLocaleString()}</td><td>${money(b.cash)}</td></tr>`).join('')}</tbody></table>
+    <table class="wbtable"><thead><tr><th></th><th class="l">Boss</th><th>Speed</th><th>Defense</th><th>HP (tiers 1–5)</th><th>Skull skill</th><th>Summons</th><th>Lives</th><th>Start money</th></tr></thead>
+    <tbody>${WB_BOSSES.map(b => `<tr><td>${wbImg(b.id, 'wbart sm')}</td><td class="l"><b>${esc(b.name)}</b><small class="muted">${esc(b.build)}</small></td><td>${b.speed}</td><td>${esc(b.defTxt)}</td><td>${wbTierStats(1, false, b).hp.toLocaleString()}–${b.hp.toLocaleString()}</td><td>${esc(WB_SKILLS[b.skill] || '')}</td><td>${esc(b.summonTxt)}</td><td>${b.lives.toLocaleString()}</td><td>${money(b.cash)}</td></tr>`).join('')}</tbody></table>
     <h3>The four maps</h3><div class="wbmaps">${WB_MAPS.map(m => `<div><canvas data-wbmap="${m.id}"></canvas><b>${esc(m.name)}</b><span class="muted small">${esc(m.desc)}</span></div>`).join('')}</div>`;
 }
 /** Draws the small World Boss map previews inside an element. */
@@ -2386,37 +2411,54 @@ function fillWbMaps(root) {
             c.replaceWith(mapPreview(m, 320));
     });
 }
-/** The World Boss banner and its damage board, at the bottom of the leaderboards. */
+/** A World Boss board result: the time and lives left when all tiers were popped, else the tiers popped and damage. */
+function wbResult(x) {
+    const h = x.h || {};
+    return h.won ? '<b class="okc">Won</b> ' + fmtClock(+h.t || 0) + ' · ' + (+h.lives || 0).toLocaleString() + ' lives'
+        : (h.tiers ? 'T' + h.tiers + ' · ' : '') + x.d.toLocaleString() + ' dmg';
+}
+/** The event whose boards to show: this week's once Thursday's fight has started, else last week's. */
+function wbBoardWeek(now = wbNow()) { const k = wbWeek(now); return now >= wbDayStart(k, false) ? k : k - 1; }
+/** The World Boss banner and its board, at the bottom of the leaderboards. */
 function renderWorldBoss(players = allPlayers()) {
     const el = $('wbBox');
     if (!el)
         return;
-    const k = wbWeek(), p = wbPick(k), open = wbOpen(), bk = open ? k : k - 1, board = bk >= WB_FIRST ? wbBoard(bk, players) : [], mine = board.find(x => x.p.me);
+    const k = wbWeek(), p = wbPick(k), mode = wbOpenMode(), open = !!mode, bk = wbBoardWeek(), elite = UI.wbTab !== 'normal';
+    const board = bk >= WB_FIRST ? wbBoard(bk, players, elite) : [], mine = board.find(x => x.p.me), today = open && (mode === 'elite') === elite && bk === k;
     refreshWbChamp(players);
     const champ = WB_CHAMP_UID ? players.find(x => x.id.uid === WB_CHAMP_UID) : null;
     const rows = board.slice(0, 10).map(x => `<tr class="${x.p.me ? 'me' : ''}" data-player="${esc(x.p.key)}" title="Open ${esc(x.p.id.name)}'s profile">
-      <td class="rk">${x.rank <= 3 ? rankBadge(x.rank, 20) : '<b>' + x.rank + '</b>'}</td>${whoCell(x.p, esc(titleOf(x.p).name))}<td class="n tot">${x.d.toLocaleString()}</td></tr>`).join('');
+      <td class="rk">${x.rank <= 3 ? rankBadge(x.rank, 20) : '<b>' + x.rank + '</b>'}</td>${whoCell(x.p, esc(titleOf(x.p).name))}<td class="n tot">${wbResult(x)}</td></tr>`).join('');
     el.innerHTML = `<div class="wbbanner" style="--wbc:${BT[p.boss.id].col}">
       <div class="wbhead"><span class="wbtag">WORLD BOSS</span><span class="wbtimer" id="wbTimer">${wbTimerHTML()}</span></div>
       <div class="wbbody">${wbImg(p.boss.id, 'wbart')}<div class="wbtxt"><h3>${esc(p.boss.name)}</h3><div class="wbbuild">${esc(p.boss.build)}</div>
         <div class="wbmeta"><span>Map: <b>${esc(p.map.name)}</b></span><span>HP <b>${p.boss.hp.toLocaleString()}</b></span><span>Start <b>${money(p.boss.cash)}</b> · <b>${p.boss.lives.toLocaleString()}</b> lives</span></div>
-        <div class="row left">${open ? '<button class="btn primary big" data-act="wbfight">Fight</button>' : '<button class="btn big" disabled>Opens ' + esc(wbOpensTxt()) + '</button>'}</div></div></div>
-      <div class="wbfoot muted small">Every Friday, 7:30 AM to 5:00 PM (PH time) · the Champion is announced at 5:01 PM and wears the World Boss Legend border for 7 days${champ ? ' · Champion: <b>' + esc(champ.id.name) + '</b>' : ''}</div></div>
-    <div class="mtable wbboard"><div class="mthead"><h3><img src="assets/ui/trophy.svg" alt="">World Boss · ${open ? 'Top damage today' : 'Last event'}</h3></div>
-    <table><thead><tr><th></th><th class="l">Top 10 players</th><th>Damage</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="3" class="empty muted small">' + (open ? 'Nobody has fought the boss yet today. Be the first!' : 'No results yet. The next fight is on Friday from 7:30 AM (PH time).') + '</td></tr>'}</tbody></table>
-    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${board.length} · best ${mine.d.toLocaleString()}` : open ? 'Fight the boss to rank' : 'Only the Champion wears the Legend border'}</div></div>`;
+        <div class="row left">${open ? '<button class="btn primary big" data-act="wbfight">Fight · ' + (mode === 'elite' ? 'Elite' : 'Normal') + '</button>' : '<button class="btn big" disabled>' + (wbNextStart().elite ? 'Elite' : 'Normal') + ' opens ' + esc(wbOpensTxt()) + '</button>'}</div></div></div>
+      <div class="wbfoot muted small">Normal on Thursday, Elite on Friday, 7:30 AM to 5:00 PM (PH time) · ${WB_TIERS.length} tiers, the boss must not reach the END · the Champion (Elite #1) is announced on Friday at 5:01 PM and wears the World Boss Legend border for 7 days${champ ? ' · Champion: <b>' + esc(champ.id.name) + '</b>' : ''}</div></div>
+    <div class="mtable wbboard"><div class="mthead"><h3><img src="assets/ui/trophy.svg" alt="">World Boss · ${today ? 'Top 10 today' : bk === k ? 'This week' : 'Last event'}</h3>
+      <span class="wbtabs"><button class="wbtab${elite ? ' on' : ''}" data-act="wbtab" data-tab="elite">Elite</button><button class="wbtab${elite ? '' : ' on'}" data-act="wbtab" data-tab="normal">Normal</button></span></div>
+    <table><thead><tr><th></th><th class="l">Top 10 players</th><th>Result</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="3" class="empty muted small">' + (today ? 'Nobody has fought the boss yet today. Be the first!' : 'No ' + (elite ? 'Elite' : 'Normal') + ' results yet. ' + (elite ? 'Elite is on Friday' : 'Normal is on Thursday') + ' from 7:30 AM (PH time).') + '</td></tr>'}</tbody></table>
+    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${board.length} · best ${wbResult(mine)}` : today ? 'Fight the boss to rank' : 'Only the Champion wears the Legend border'} · wins first, then fastest, then most lives, then damage</div></div>`;
 }
 $('wbBox').addEventListener('click', (e) => {
     const t = e.target as any, a = t.closest('[data-act]'), r = t.closest('[data-player]');
     if (a && a.dataset.act === 'wbfight')
         startWorldBoss();
+    else if (a && a.dataset.act === 'wbtab') {
+        UI.wbTab = a.dataset.tab;
+        renderWorldBoss();
+    }
     else if (r)
         openProfileCard(r.dataset.player);
 });
 /** When the next fight opens, in this PC's time: "Fri 7:30 AM". */
-function wbOpensTxt() { return new Date(wbStartsAt(wbWeek())).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }); }
-function wbTimerHTML() { return wbOpen() ? 'Ends in <b>' + wbLeft(wbEndsAt(wbWeek())) + '</b>' : 'Opens in <b>' + wbLeft(wbStartsAt(wbWeek())) + '</b>'; }
+function wbOpensTxt() { return new Date(wbNextStart().at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }); }
+function wbTimerHTML() {
+    const m = wbOpenMode(), n = wbNextStart();
+    return m ? (m === 'elite' ? 'Elite' : 'Normal') + ' ends in <b>' + wbLeft(wbOpenEnd()) + '</b>' : (n.elite ? 'Elite' : 'Normal') + ' opens in <b>' + wbLeft(n.at) + '</b>';
+}
 /* Every second, on every screen: the banner's clock, and when the fight opens, closes or its champion is announced
    (5:01 PM): the notifications, the Legend border, the boards and the champion greeting. */
 setInterval(() => {
@@ -2425,7 +2467,7 @@ setInterval(() => {
         t.innerHTML = wbTimerHTML();
     if ($('wbNewsTimer'))
         $('wbNewsTimer').innerHTML = wbNewsTimerHTML();
-    const st = wbWeek() + '|' + wbOpen() + '|' + wbChampWeek();
+    const st = wbWeek() + '|' + wbOpenMode() + '|' + wbChampWeek();
     if (UI.wbState !== undefined && UI.wbState !== st) {
         refreshWbChamp();
         checkWbNotes();
@@ -2453,15 +2495,15 @@ function checkWbChampModal() {
 }
 /** The greeting card: the champion's avatar in the Legend border, their name, the boss and their damage, silver and bronze. */
 function wbChampHTML(c, players) {
-    const me = c.p.me, name = esc(c.p.id.name), board = wbBoard(c.k, players), map = wbPick(c.k).map;
-    const others = board.slice(1, 3).map(x => `<span>${rankBadge(x.rank, 18)} ${esc(x.p.id.name)} · ${x.d.toLocaleString()}</span>`).join('');
+    const me = c.p.me, name = esc(c.p.id.name), board = wbBoard(c.k, players, c.elite), map = wbPick(c.k).map;
+    const others = board.slice(1, 3).map(x => `<span>${rankBadge(x.rank, 18)} ${esc(x.p.id.name)} · ${wbResult(x)}</span>`).join('');
     return `<div class="confetti">${Array.from({ length: 24 }, (_, i) => `<i style="--i:${i};--c:${['#ffd93d', '#ce93d8', '#4fc3f7', '#ff6b6b', '#ffffff'][i % 5]}"></i>`).join('')}</div>
     <div class="wbchamp">
-      <div class="wbtag">WORLD BOSS CHAMPION</div>
+      <div class="wbtag">WORLD BOSS CHAMPION · ${c.elite ? 'ELITE' : 'NORMAL'}</div>
       <div class="wbc-av">${avatarSVG(avatarOf(c.p.id), 168)}</div>
       <h2>${me ? 'Congratulations, you are the World Boss Champion!' : 'Congratulations, ' + name + '!'}</h2>
-      <p class="lead">${me ? 'You' : name} dealt the most damage to <b>${esc(c.boss.name)}</b> on ${esc(map.name)}.</p>
-      <div class="wbc-dmg"><b>${c.d.toLocaleString()}</b><span>damage</span></div>
+      <p class="lead">${me ? 'You' : name} ${c.h && c.h.won ? 'popped all ' + WB_TIERS.length + ' tiers of' : 'dealt the most damage to'} <b>${esc(c.boss.name)}</b>${c.h && c.h.won ? ' the fastest' : ''} on ${esc(map.name)}.</p>
+      <div class="wbc-dmg"><b>${c.h && c.h.won ? fmtClock(+c.h.t || 0) : c.d.toLocaleString()}</b><span>${c.h && c.h.won ? 'time · ' + (+c.h.lives || 0).toLocaleString() + ' lives left' : 'damage'}</span></div>
       <div class="wbc-border">The exclusive <b>World Boss Legend</b> border is ${me ? 'yours' : name + '\'s'} for 7 days, until the next champion is announced. Only the Champion can wear it.</div>
       ${others ? `<div class="wbc-others">${others}</div>` : ''}
       <div class="row"><button class="btn primary big" data-act="champok">${me ? 'Thank you!' : 'Congratulations!'}</button></div>
@@ -2481,25 +2523,25 @@ function closeWbChamp() {
 }
 /** The big countdown in the World Boss news: "Ends in" / "Opens in" and the time left. */
 function wbNewsTimerHTML() {
-    const k = wbWeek(), open = wbOpen();
-    return `<span>${open ? 'Ends in' : 'Opens in'}</span><b>${wbLeft(open ? wbEndsAt(k) : wbStartsAt(k))}</b>`;
+    const m = wbOpenMode(), n = wbNextStart();
+    return `<span>${m ? (m === 'elite' ? 'Elite' : 'Normal') + ' ends in' : (n.elite ? 'Elite' : 'Normal') + ' opens in'}</span><b>${wbLeft(m ? wbOpenEnd() : n.at)}</b>`;
 }
 /** 5.1: the World Boss news, every time you log in: one big banner with this week's boss, its stats, the countdown,
     how today is going and the reigning champion. */
 function openWbNews() {
     if (!loggedIn())
         return;
-    const k = wbWeek(), p = wbPick(k), open = wbOpen(), players = allPlayers(), c = wbChamp(players);
-    const board = open ? wbBoard(k, players) : [], mine = board.find(x => x.p.me), col = BT[p.boss.id].col;
+    const k = wbWeek(), p = wbPick(k), mode = wbOpenMode(), open = !!mode, players = allPlayers(), c = wbChamp(players);
+    const board = open ? wbBoard(k, players, mode === 'elite') : [], mine = board.find(x => x.p.me), col = BT[p.boss.id].col;
     UI.wbNewsOpen = true;
     const stat = (label, val) => `<div class="wbn-stat"><span>${label}</span><b>${val}</b></div>`;
-    const today = !open ? '' : mine ? `You are <b>#${mine.rank}</b> today with <b>${mine.d.toLocaleString()}</b> damage. Beat it!`
-        : board.length ? `<b>${board.length}</b> player${board.length > 1 ? 's have' : ' has'} fought it today · top damage <b>${esc(board[0].p.id.name)}</b> ${board[0].d.toLocaleString()}`
+    const today = !open ? '' : mine ? `You are <b>#${mine.rank}</b> today with <b>${wbResult(mine)}</b>. Beat it!`
+        : board.length ? `<b>${board.length}</b> player${board.length > 1 ? 's have' : ' has'} fought it today · leader <b>${esc(board[0].p.id.name)}</b> ${wbResult(board[0])}`
             : 'Nobody has fought it yet today. <b>Be the first!</b>';
     openModal('wbnews', `<div class="wbn" style="--wbc:${col}">
       <button class="iconbtn x wbn-x" data-act="wbnews-close" title="Close"><img src="assets/ui/close.svg" alt="Close"></button>
       <div class="wbn-rays"></div>
-      <div class="wbn-top"><span class="wbn-tag">${open ? '<i class="wbn-live"></i>LIVE NOW' : 'THIS WEEK'}</span><span class="wbn-kicker">World Boss Event</span></div>
+      <div class="wbn-top"><span class="wbn-tag">${open ? '<i class="wbn-live"></i>LIVE NOW · ' + (mode === 'elite' ? 'ELITE' : 'NORMAL') : 'THIS WEEK'}</span><span class="wbn-kicker">World Boss Event</span></div>
       <div class="wbn-hero">
         <div class="wbn-art"><div class="wbn-glow"></div>${wbImg(p.boss.id, 'wbn-boss')}</div>
         <div class="wbn-info">
@@ -2507,12 +2549,12 @@ function openWbNews() {
           <div class="wbn-build">${esc(p.boss.build)}</div>
           <div class="wbn-where">on <b>${esc(p.map.name)}</b></div>
           <div class="wbn-timer" id="wbNewsTimer">${wbNewsTimerHTML()}</div>
-          <div class="wbn-when">${open ? 'Open until 5:00 PM today (PH time)' : 'Fri 7:30 AM – 5:00 PM (PH time) · ' + esc(wbOpensTxt()) + ' your time'}</div>
+          <div class="wbn-when">${open ? 'Open until 5:00 PM today (PH time)' : 'Normal Thu · Elite Fri · 7:30 AM – 5:00 PM (PH time) · next ' + esc(wbOpensTxt()) + ' your time'}</div>
         </div>
       </div>
-      <div class="wbn-stats">${stat('HP', p.boss.hp.toLocaleString())}${stat('Speed', esc(p.boss.speed))}${stat('Defense', esc(p.boss.defTxt.replace(/ \(.*\)/, '')))}${stat('Summons', esc(p.boss.summonTxt))}${stat('Lives', p.boss.lives.toLocaleString())}${stat('Start', money(p.boss.cash))}</div>
+      <div class="wbn-stats">${stat('Tiers', String(WB_TIERS.length))}${stat('HP', wbTierStats(1, false, p.boss).hp.toLocaleString() + '–' + p.boss.hp.toLocaleString())}${stat('Boss rounds', WB_TIERS_TXT())}${stat('Skull skill', esc((WB_SKILLS[p.boss.skill] || '').split(':')[0]))}${stat('Speed', esc(p.boss.speed))}${stat('Defense', esc(p.boss.defTxt.replace(/ \(.*\)/, '')))}${stat('Summons', esc(p.boss.summonTxt))}${stat('Lives', p.boss.lives.toLocaleString())}${stat('Start', money(p.boss.cash))}</div>
       ${today ? `<div class="wbn-today">${today}</div>` : ''}
-      ${c ? `<div class="wbn-champ">${avatarSVG(avatarOf(c.p.id), 46)}<div><small>Reigning champion</small><b>${esc(c.p.id.name)}</b><span>${c.d.toLocaleString()} damage on ${esc(c.boss.name)}</span></div></div>` : ''}
+      ${c ? `<div class="wbn-champ">${avatarSVG(avatarOf(c.p.id), 46)}<div><small>Reigning champion</small><b>${esc(c.p.id.name)}</b><span>${c.h && c.h.won ? 'Beat ' + esc(c.boss.name) + (c.elite ? ' (Elite)' : '') + ' in ' + fmtClock(+c.h.t || 0) : c.d.toLocaleString() + ' damage on ' + esc(c.boss.name)}</span></div></div>` : ''}
       <div class="wbn-actions"><button class="btn" data-act="wbinfo">How it works</button>${open ? '<button class="btn" data-act="wbnews-close">Later</button><button class="btn primary big wbn-fight" data-act="wbnews-fight">⚔ Fight now</button>' : '<button class="btn primary big" data-act="wbnews-close">Got it</button>'}</div>
     </div>`, 'wbncard');
 }
@@ -2732,7 +2774,7 @@ function openFindProfile() { openLogin(); }
 function historyWhat(h) {
     if (h.wb) {
         const b = WB_BOSSES.find(x => x.id === h.wb), m = WB_MAPS.find(x => x.id === h.map);
-        return 'World Boss · ' + (b ? b.name : h.wb) + (m ? ' · ' + m.name : '');
+        return 'World Boss' + (h.wbElite ? ' (Elite)' : '') + ' · ' + (b ? b.name : h.wb) + (m ? ' · ' + m.name : '');
     }
     const m = MAPS.find(x => x.id === h.map), d = DIFF[h.diff];
     return (h.daily ? 'Daily · ' : '') + (m ? m.name : h.map) + ' · ' + (d ? d.name : h.diff) + (h.mode && h.mode !== 'standard' && MODES[h.mode] ? ' · ' + MODES[h.mode].name : '');

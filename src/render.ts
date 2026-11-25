@@ -492,23 +492,193 @@ function drawBoss(c, b, d, time) {
         c.stroke();
     }
 }
-/** World Boss: 5 times the Colossus. Slightly see-through so the towers under it stay visible. */
+/** World Boss: 5 times the Colossus. Slightly see-through so the towers under it stay visible.
+    5.2: every tier looks stronger than the last (drawWbTierGear): tier 2 gets an armour band, tier 3 spikes, tier 4 a
+    glowing aura and horns, tier 5 a fire aura. Elite gear is blood red. Skull skills show too: shield, dash, angry,
+    and a ring while it stands still to summon. No labels: the look alone tells the tier. */
 function drawWorldBoss(c, b, d, time) {
-    const y = b.y + Math.sin(time * 1.4 + b.wob) * 4, s = d.r / 68;
+    const tier = b.tier || 1, elite = !!(game && game.wb && game.wb.elite), grow = 1 + 0.06 * (tier - 1);
+    const y = b.y + Math.sin(time * 1.4 + b.wob) * 4, s = d.r / 68 * grow, R = d.r * grow;
     c.save();
     c.globalAlpha = .22;
     c.fillStyle = "#000";
     c.beginPath();
-    c.ellipse(b.x + 14, b.y + d.r * .95, d.r * .75, d.r * .22, 0, 0, TAU);
+    c.ellipse(b.x + 14, b.y + R * .95, R * .75, R * .22, 0, 0, TAU);
     c.fill();
+    c.restore();
+    drawWbAura(c, b.x, y, R, tier, elite, time, game && game.wb && game.wb.angry);
+    c.save();
     c.globalAlpha = .88;
     if (!drawSpr(c, "balloons/" + b.type, b.x, y, s, 80, 86))
-        disc(c, b.x, y, d.r, d.col);
+        disc(c, b.x, y, R, d.col);
+    // later tiers are darker and redder, like they are heating up
+    if (tier >= 3 || elite) {
+        c.globalAlpha = Math.min(.34, .07 * (tier - 2) + (elite ? .1 : 0));
+        c.fillStyle = elite ? '#7f0000' : '#4a148c';
+        c.beginPath();
+        c.arc(b.x, y - R * .05, R * .86, 0, TAU);
+        c.fill();
+    }
     if (b.flash > 0) {
         c.globalAlpha = .18;
         c.fillStyle = "#fff";
         c.beginPath();
-        c.arc(b.x, y, d.r * .95, 0, TAU);
+        c.arc(b.x, y, R * .95, 0, TAU);
+        c.fill();
+    }
+    c.restore();
+    drawWbTierGear(c, b.x, y, R, tier, elite, time);
+    if (b.shieldT > 0) { // Bastion's shield
+        c.save();
+        c.globalAlpha = .35 + .15 * Math.sin(time * 10);
+        c.fillStyle = '#4fc3f7';
+        c.strokeStyle = '#e1f5fe';
+        c.lineWidth = 4;
+        c.beginPath();
+        c.arc(b.x, y, R * 1.12, 0, TAU);
+        c.fill();
+        c.globalAlpha = .9;
+        c.stroke();
+        c.restore();
+    }
+    if (b.dashT > 0) { // Gale's dash: speed lines behind it
+        c.save();
+        c.translate(b.x, y);
+        c.rotate(b.a || 0);
+        c.strokeStyle = 'rgba(255,255,255,.75)';
+        c.lineWidth = 4;
+        c.lineCap = 'round';
+        for (let i = -2; i <= 2; i++) {
+            const o = ((time * 600 + i * 47) % 60);
+            c.beginPath();
+            c.moveTo(-R * 1.1 - o, i * R * .3);
+            c.lineTo(-R * 1.6 - o, i * R * .3);
+            c.stroke();
+        }
+        c.restore();
+    }
+    if (b.castT > 0) { // summoning: it stands still and a purple ring pulses out
+        c.save();
+        const k = 1 - b.castT / WB_CAST_TIME;
+        c.globalAlpha = .6 * (1 - k);
+        c.strokeStyle = elite ? '#ff1744' : '#ce93d8';
+        c.lineWidth = 6;
+        c.beginPath();
+        c.arc(b.x, y, R * (1 + .5 * k), 0, TAU);
+        c.stroke();
+        c.restore();
+    }
+}
+/** Behind the boss: a soft glow from tier 4, flames at tier 5, a red pulse while it is angry. */
+function drawWbAura(c, x, y, R, tier, elite, time, angry) {
+    if (tier < 4 && !elite && !angry)
+        return;
+    c.save();
+    const pulse = .5 + .5 * Math.sin(time * 4);
+    if (tier >= 4 || elite) {
+        const g = c.createRadialGradient(x, y, R * .7, x, y, R * 1.45);
+        g.addColorStop(0, elite ? 'rgba(255,23,68,.55)' : tier >= 5 ? 'rgba(255,109,0,.55)' : 'rgba(186,104,200,.5)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.globalAlpha = .7 + .3 * pulse;
+        c.fillStyle = g;
+        c.beginPath();
+        c.arc(x, y, R * 1.45, 0, TAU);
+        c.fill();
+    }
+    if (tier >= 5) { // flames licking up round it
+        c.globalAlpha = .85;
+        for (let i = 0; i < 14; i++) {
+            const a = i / 14 * TAU, f = .75 + .25 * Math.sin(time * 9 + i * 1.7), len = R * (.35 + .25 * f);
+            const bx = x + Math.cos(a) * R * .92, by = y + Math.sin(a) * R * .92;
+            c.fillStyle = i % 2 ? (elite ? '#ff1744' : '#ff6d00') : '#ffd54f';
+            c.beginPath();
+            c.moveTo(bx + Math.cos(a + 1.57) * R * .14, by + Math.sin(a + 1.57) * R * .14);
+            c.quadraticCurveTo(bx + Math.cos(a) * len * .6 + Math.cos(a + 1.2) * 10, by + Math.sin(a) * len * .6 + Math.sin(a + 1.2) * 10 - 6,
+                bx + Math.cos(a) * len, by + Math.sin(a) * len - len * .35);
+            c.quadraticCurveTo(bx + Math.cos(a) * len * .4, by + Math.sin(a) * len * .4, bx - Math.cos(a + 1.57) * R * .14, by - Math.sin(a + 1.57) * R * .14);
+            c.fill();
+        }
+    }
+    if (angry) {
+        c.globalAlpha = .25 + .25 * pulse;
+        c.strokeStyle = '#ff1744';
+        c.lineWidth = 8;
+        c.beginPath();
+        c.arc(x, y, R * (1.05 + .05 * pulse), 0, TAU);
+        c.stroke();
+    }
+    c.restore();
+}
+/** In front of the boss: armour band (tier 2+), turning spikes (tier 3+), horns (tier 4+), crown of fire (tier 5). */
+function drawWbTierGear(c, x, y, R, tier, elite, time) {
+    if (tier < 2)
+        return;
+    const metal = elite ? '#b71c1c' : tier >= 4 ? '#ffb300' : '#78909c', dark = elite ? '#3e0000' : '#263238';
+    c.save();
+    c.globalAlpha = .95;
+    // armour band round the middle, with rivets
+    c.strokeStyle = dark;
+    c.lineWidth = R * .2;
+    c.beginPath();
+    c.ellipse(x, y + R * .12, R * .88, R * .3, 0, .15, Math.PI - .15);
+    c.stroke();
+    c.strokeStyle = metal;
+    c.lineWidth = R * .13;
+    c.stroke();
+    c.fillStyle = '#eceff1';
+    for (let i = 1; i < 6; i++) {
+        const a = .15 + (Math.PI - .3) * i / 6;
+        c.beginPath();
+        c.arc(x + Math.cos(a) * R * .88, y + R * .12 + Math.sin(a) * R * .3, R * .035, 0, TAU);
+        c.fill();
+    }
+    if (tier >= 3) { // spikes all round, turning slowly
+        const n = 8 + (tier - 3) * 2, spin = time * .4;
+        for (let i = 0; i < n; i++) {
+            const a = spin + i / n * TAU, ca = Math.cos(a), sa = Math.sin(a), w = R * .1;
+            const bx = x + ca * R * .93, by = y + sa * R * .93, tx = x + ca * R * (1.2 + .04 * tier), ty = y + sa * R * (1.2 + .04 * tier);
+            c.fillStyle = dark;
+            c.beginPath();
+            c.moveTo(bx - sa * w * 1.25, by + ca * w * 1.25);
+            c.lineTo(tx + ca * 3, ty + sa * 3);
+            c.lineTo(bx + sa * w * 1.25, by - ca * w * 1.25);
+            c.fill();
+            c.fillStyle = metal;
+            c.beginPath();
+            c.moveTo(bx - sa * w, by + ca * w);
+            c.lineTo(tx, ty);
+            c.lineTo(bx + sa * w, by - ca * w);
+            c.fill();
+        }
+    }
+    if (tier >= 4) { // two curved horns on top
+        for (const side of [-1, 1]) {
+            c.fillStyle = dark;
+            c.beginPath();
+            c.moveTo(x + side * R * .32, y - R * .78);
+            c.quadraticCurveTo(x + side * R * .85, y - R * 1.05, x + side * R * .72, y - R * 1.5);
+            c.quadraticCurveTo(x + side * R * .62, y - R * 1.08, x + side * R * .12, y - R * .86);
+            c.fill();
+            c.fillStyle = tier >= 5 ? '#ff6d00' : '#eceff1';
+            c.beginPath();
+            c.moveTo(x + side * R * .66, y - R * 1.2);
+            c.quadraticCurveTo(x + side * R * .78, y - R * 1.3, x + side * R * .72, y - R * 1.5);
+            c.quadraticCurveTo(x + side * R * .68, y - R * 1.32, x + side * R * .58, y - R * 1.24);
+            c.fill();
+        }
+    }
+    if (tier >= 5) { // a crown of fire between the horns
+        const f = Math.sin(time * 12);
+        c.fillStyle = elite ? '#ff1744' : '#ff6d00';
+        c.beginPath();
+        c.moveTo(x - R * .3, y - R * .9);
+        for (let i = 0; i <= 4; i++)
+            c.lineTo(x - R * .3 + i * R * .15, y - R * (i % 2 ? .98 : 1.2 + .05 * f));
+        c.lineTo(x + R * .3, y - R * .9);
+        c.fill();
+        c.fillStyle = '#ffd54f';
+        c.beginPath();
+        c.arc(x, y - R * 1.02, R * .06, 0, TAU);
         c.fill();
     }
     c.restore();
