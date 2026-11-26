@@ -3,7 +3,7 @@ const $ = (id: string): any => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 const UI: any = { shop: null, selected: null, selScenery: null, hoverTower: null, hoverScenery: null, previewRange: 0,
     mouse: { x: 0, y: 0, in: false }, speed: 1, paused: false, tier: 'beginner', menuMap: 0, menuDiff: 'medium', menuMode: 'standard',
-    modal: null, sellTarget: null, bossKey: false, treeType: 'dart', treeSel: [0, 0], showInfo: false, cashShown: 0, draft: null, prevScreen: 'menu' };
+    modal: null, sellTarget: null, treeType: 'dart', treeSel: [0, 0], showInfo: false, cashShown: 0, draft: null, prevScreen: 'menu' };
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = (n) => '$' + Math.floor(n).toLocaleString();
 const tierOf = (id) => TIERS.find(t => t.id === id);
@@ -654,7 +654,7 @@ function renderPanel() {
     for (let p = 0; p < 3; p++) {
         const lv = t.lv[p];
         h += `<div class="prow p${p}"><div class="vpips">${[4, 3, 2, 1, 0].map(i => `<span class="${i < lv ? 'on' : ''}"></span>`).join('')}</div>
-        ${lv ? `<div class="ucard owned">${upIcon(t.type, p, lv - 1, 'owned', 30)}<span><b>${esc(d.paths[p][lv - 1].n)}</b><small>OWNED</small></span></div>` : '<div class="ucard none"><small>Path ' + (p + 1) + ' <kbd>' + [',', '.', '/'][p] + '</kbd></small></div>'}
+        ${lv ? `<div class="ucard owned">${upIcon(t.type, p, lv - 1, 'owned', 30)}<span><b>${esc(d.paths[p][lv - 1].n)}</b><small>OWNED</small></span></div>` : '<div class="ucard none"><small>Path ' + (p + 1) + ' <kbd>' + PATH_KEYS[p] + '</kbd></small></div>'}
         ${upCard(t, p)}</div>`;
     }
     h += `<div class="udesc" id="uDesc">Hover an upgrade to see what it does.</div>`;
@@ -831,26 +831,9 @@ $('mSettings').addEventListener('click', () => openSettings());
 $('mStats').addEventListener('click', () => openProfileCard());
 $('profChip').addEventListener('click', () => openProfileCard());
 $('mUpgrades').addEventListener('click', () => loggedIn() ? openTree(UI.treeType, 'menu') : openLogin());
-/* Boss key: ` hides the game behind a plain blank screen and pauses it. */
-function toggleBossKey() {
-    UI.bossKey = !UI.bossKey;
-    $('bosskey').classList.toggle('on', UI.bossKey);
-    document.title = UI.bossKey ? 'Untitled' : 'Balloon Defense';
-    if (UI.bossKey && inGame() && !game.over && !UI.modal) {
-        UI.paused = true;
-        snapshot();
-    }
-}
+/** Upgrade path 1 / 2 / 3 hotkeys. */
+const PATH_KEYS = ['A', 'S', 'D'];
 document.addEventListener('keydown', (e) => {
-    if (e.key === '`' || e.key === '~') {
-        if ((e.target as any).tagName === 'INPUT' || (e.target as any).tagName === 'TEXTAREA')
-            return;
-        e.preventDefault();
-        toggleBossKey();
-        return;
-    }
-    if (UI.bossKey)
-        return;
     if (e.key === 'Escape' && UI.modal) {
         if (UI.modal === 'pause')
             resume();
@@ -911,9 +894,9 @@ document.addEventListener('keydown', (e) => {
         else
             pause();
     }
-    else if (k === ',' || k === '.' || k === '/') {
+    else if (k.length === 1 && PATH_KEYS.includes(k.toUpperCase()) && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
-        if (upgrade(UI.selected, [',', '.', '/'].indexOf(k)))
+        if (upgrade(UI.selected, PATH_KEYS.indexOf(k.toUpperCase())))
             renderPanel();
     }
     else if ((k === 'Delete' || k === 'Backspace') && UI.selected)
@@ -927,7 +910,6 @@ document.addEventListener('keydown', (e) => {
 });
 ['pointerdown', 'keydown'].forEach(ev => document.addEventListener(ev, () => { if (SETTINGS.sound)
     Sound.init(); }, { once: false, passive: true }));
-$('bosskey').addEventListener('click', toggleBossKey);
 function autoPause() { if (SETTINGS.pauseOnBlur && inGame() && !game.over && !UI.modal)
     pause(); }
 document.addEventListener('visibilitychange', () => { if (document.hidden) {
@@ -987,6 +969,13 @@ $('modal').addEventListener('click', (e) => {
     const a = b.dataset.act;
     if (a === 'champok')
         closeWbChamp();
+    else if (a === 'champpick') {
+        if (UI.modal === 'wbchamp') { // from the greeting: it counts as seen; a running game stays paused
+            store.set('wbChampSeen', UI.wbChampK);
+            UI.wbPrevModal = null;
+        }
+        openChampPick();
+    }
     else if (a === 'close')
         closeModalAndResume();
     else if (a === 'resume')
@@ -1273,13 +1262,12 @@ function openHelp(tab?) {
     <div class="keys">
       <span><kbd>1</kbd>–<kbd>9</kbd></span><span>Pick a tower</span>
       <span><kbd>Space</kbd> / <kbd>F</kbd></span><span>Start round / change speed</span>
-      <span><kbd>,</kbd> <kbd>.</kbd> <kbd>/</kbd></span><span>Upgrade path 1 / 2 / 3</span>
+      <span><kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd></span><span>Upgrade path 1 / 2 / 3</span>
       <span><kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>T</kbd> <kbd>Y</kbd> <kbd>U</kbd></span><span>Use the 1st–7th ability on the ability tray (the key is shown on each button)</span>
       <span><kbd>Shift</kbd> + <kbd>1</kbd>–<kbd>9</kbd></span><span>Use that tower type's ability (backup)</span>
       <span><kbd>G</kbd></span><span>Change targeting</span>
       <span><kbd>Del</kbd></span><span>Sell selected tower</span>
       <span><kbd>M</kbd></span><span>Sound on / off</span>
-      <span><kbd>\`</kbd></span><span>Boss key: hide the game instantly</span>
       <span><kbd>Esc</kbd> / <kbd>P</kbd></span><span>Cancel / pause</span>
     </div></div>`, 'wide');
 }
@@ -1289,7 +1277,23 @@ function pickerHTML(d) {
     return `<div class="pickrow"><span>Animal</span><div class="picks animals">${ANIMALS.map(a => opt('animal', a.id, avatarSVG({ animal: a.id, style: d.style, bg: d.bg, border: 'plain' }, 44), d.animal === a.id, false, a.name)).join('')}</div></div>
     <div class="pickrow"><span>Style</span><div class="seg">${[['m', 'Male'], ['f', 'Female']].map(([v, n]) => `<button data-act="pick" data-k="style" data-v="${v}" class="${d.style === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
     <div class="pickrow"><span>Background</span><div class="picks">${AVATAR_BGS.map(b => opt('bg', b.id, `<i class="swatch" style="background:linear-gradient(${b.a},${b.b})"></i>`, d.bg === b.id, false, b.name)).join('')}</div></div>
-    <div class="pickrow"><span>Border</span><div class="picks">${BORDERS.filter(b => !b.special).map(b => { const u = borderUnlocked(b); return opt('border', b.id, avatarSVG({ animal: d.animal, style: d.style, bg: d.bg, border: b.id }, 36) + (u ? '' : '<img class="plock" src="assets/ui/lock.svg" alt="">'), d.border === b.id, !u, b.name + (u ? '' : ' — ' + b.how)); }).join('')}</div></div>`;
+    <div class="pickrow"><span>Border</span><div class="picks">${BORDERS.filter(b => !b.special).map(b => { const u = borderUnlocked(b); return opt('border', b.id, avatarSVG({ animal: d.animal, style: d.style, bg: d.bg, border: b.id }, 36) + (u ? '' : '<img class="plock" src="assets/ui/lock.svg" alt="">'), d.border === b.id, !u, b.name + (u ? '' : ' — ' + b.how)); }).join('')}</div></div>${champPickHTML(d, opt)}`;
+}
+/** 5.2.1: the champion borders, in Edit profile, for the World Boss Champion only (any of the 10, changed any time while
+    they are champion). Everyone else sees nothing here. */
+function champPickHTML(d, opt) {
+    if (UI.modal !== 'editprofile' || !d.uid || d.uid !== WB_CHAMP_UID)
+        return '';
+    return `<div class="champpick"><div class="cphead"><b>Champion borders</b><small>World Boss Champion only · yours until the next champion is announced (Friday 5:01 PM) · click one to wear it</small></div>
+      ${champCardsHTML(d, champBorderId(d.cb), true)}</div>`;
+}
+/** The 10 Champion borders as numbered cards, each on this avatar (d: animal, style, bg), with its name and look.
+    `pick` makes them buttons for Edit profile; `cur` is marked Wearing. */
+function champCardsHTML(d, cur, pick) {
+    return `<div class="cpgrid">${BORDERS.filter(b => b.champ).map((b, i) => {
+        const on = cur === b.id, inner = `<i class="cpn">${i + 1}</i>${avatarSVG({ animal: d.animal || 'fox', style: d.style || 'm', bg: d.bg || 'sky', border: b.id, champ: true }, 96)}<b>${esc(b.name)}</b><small>${esc(b.desc)}</small>${on ? '<em>Wearing</em>' : ''}`;
+        return pick ? `<button type="button" class="cpcard${on ? ' on' : ''}" data-act="pick" data-k="cb" data-v="${b.id}" title="Wear ${esc(b.name)}">${inner}</button>` : `<div class="cpcard${on ? ' on' : ''}">${inner}</div>`;
+    }).join('')}</div>`;
 }
 /** The registration picker: animal, style, background and the free borders (a new player has earned no others yet). */
 function regPickerHTML(d) {
@@ -1518,7 +1522,7 @@ function openLogin(note?) {
         UI.loginList = list;
         el.innerHTML = list.length ? list.map(c => `<button class="ltile${c.here ? ' here' : ''}${c.on ? ' busy' : ''}" data-act="loginpick" data-uid="${esc(c.uid)}" data-name="${esc(String(c.id.name).toLowerCase())}" title="${c.on ? 'Being played on another PC right now' : 'Log in as ' + esc(c.id.name)}">
           <span class="lav">${avatarSVG(Object.assign({}, c.id, { uid: c.uid }), 52)}<i class="sdot ${c.on ? 'on' : 'off'}"></i></span>
-          <span class="lname"><b>${esc(c.id.name)}</b><small>Lv ${levelOf(c.profile.xp)} · ${esc(c.seenTxt || 'Offline')}</small></span>
+          <span class="lname"><b>${pName(c.uid, c.id.name)}</b><small>Lv ${levelOf(c.profile.xp)} · ${esc(c.seenTxt || 'Offline')}</small></span>
           <span class="ltags">${c.here ? '<i class="tag here">This PC</i>' : ''}${hasPassword(bestId(c.uid) || c.id) ? '<i class="tag lock" title="Has a password">🔒</i>' : '<i class="tag new" title="Makes a password at log-in">New password</i>'}</span></button>`).join('')
             + '<p class="muted small nomatch hide">No player with that name. <button class="linkbtn" data-act="tocreate">Create a profile</button></p>'
             : '<div class="authempty"><b>No players yet</b><span>Be the first: create a profile.</span><button class="btn primary" data-act="tocreate">Create a profile</button></div>';
@@ -1546,7 +1550,7 @@ function openLoginPw(uid) {
     const id = bestId(uid) || c.id, has = hasPassword(id), t = titleById(c.id.title);
     UI.loginUid = uid;
     openModal('loginpw', authPage('login', `<button class="backlink" data-act="signin">‹ All players</button>
-    <div class="loginwho">${avatarSVG(Object.assign({}, c.id, { uid }), 96)}<div><div class="pname">${esc(c.id.name)}<span>#${esc(c.id.tag)}</span></div>
+    <div class="loginwho">${avatarSVG(Object.assign({}, c.id, { uid }), 96)}<div><div class="pname">${pName(uid, c.id.name)}<span>#${esc(c.id.tag)}</span></div>
       <div class="ptitle">${esc((c.profile.pops || 0) >= t.pops ? t.name : TITLES[0].name)} · Lv ${levelOf(c.profile.xp)}</div>
       <div class="muted small">${c.here ? 'Plays on this PC' : 'Moves to this PC when you log in'}</div></div></div>
     <form onsubmit="return false" autocomplete="off">
@@ -1700,7 +1704,7 @@ function saveNewPw() {
 }
 function openEditProfile() {
     const p = getId();
-    UI.draft = { name: p.name, animal: p.animal, style: p.style, bg: p.bg, border: p.border, title: p.title };
+    UI.draft = { uid: p.uid, name: p.name, animal: p.animal, style: p.style, bg: p.bg, border: p.border, cb: champBorderId(p.cb), title: p.title };
     openModal('editprofile', `<div class="cardhead"><h2>Edit profile</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
     <div class="createtop"><div id="draftPrev"></div><div class="grow"><label class="lbl" for="nameIn">Player name</label>
       <div class="nameid"><input id="nameIn" maxlength="16" autocomplete="off" spellcheck="false" value="${esc(p.name)}"><span>#${p.tag}</span></div><div class="err" id="nameErr"></div>
@@ -1722,6 +1726,10 @@ function finishEdit() {
         return;
     }
     Object.assign(p, { name: name.trim(), animal: UI.draft.animal, style: UI.draft.style, bg: UI.draft.bg, border: UI.draft.border, title: UI.draft.title || p.title });
+    if (p.uid === WB_CHAMP_UID) { // the champion's pick of the champion borders
+        p.cb = champBorderId(UI.draft.cb);
+        WB_CHAMP_CB = p.cb;
+    }
     saveId(p);
     Share.syncSoon();
     openProfileCard();
@@ -1763,7 +1771,7 @@ function renderTree() {
     const type = UI.treeType, d = TD[type], pr = tprog(type), [sp, si] = UI.treeSel, u = d.paths[sp][si], tier = si + 1;
     const L = towerLevel(type), nextXp = towerXpForLevel(L + 1), curXp = towerXpForLevel(L);
     const why = unlockProblem(type, sp, tier), unlocked = why === 'unlocked';
-    const baseCost = game && inGame() ? price(u.c, type) : Math.round(u.c / 5) * 5;
+    const baseCost = game && inGame() ? price(u.c, type, true) : Math.round(u.c * twMul(type, 'up') / 5) * 5;
     const grid = [0, 1, 2].map(p => {
         const open = d.paths[p].filter((x, i) => tierUnlocked(type, p, i + 1)).length;
         return `<div class="trow" style="--pc:${PATH_COL[p]}"><div class="pl"><b>Path ${p + 1}</b><small>${open} / 5 open</small></div><div class="tnodes">${d.paths[p].map((x, i) => {
@@ -1848,7 +1856,7 @@ function badgeRow(map) {
 }
 function renderProfileChip() {
     const p = getId();
-    $('profChip').innerHTML = p && loggedIn() ? `${avatarSVG(p, 44)}<span class="pc"><b>${esc(p.name)}<i>#${p.tag}</i></b><small>${currentTitle(p).name} · Lv ${playerLevel()}</small></span>` : '<span class="pc"><b>Log in</b></span>';
+    $('profChip').innerHTML = p && loggedIn() ? `${avatarSVG(p, 44)}<span class="pc"><b>${pName(p.uid, p.name)}<i>#${p.tag}</i></b><small>${currentTitle(p).name} · Lv ${playerLevel()}</small></span>` : '<span class="pc"><b>Log in</b></span>';
 }
 function showActToast(html) {
     const el = $('actToast');
@@ -1939,7 +1947,7 @@ function rankBadge(rank, px = 22) {
 }
 function boardRow(pl, rank, right, sub) {
     return `<li class="lbrow${pl.me ? ' me' : ''}" data-act="player" data-player="${esc(pl.key)}" title="Open ${esc(pl.id.name)}'s profile">${rankBadge(rank)}${avatarSVG(pl.id, 28)}
-      <span class="pn"><b>${esc(pl.id.name)}<em>#${esc(pl.id.tag)}</em>${pl.me ? '<u>you</u>' : ''}</b><small>${sub}</small></span><b class="sc">${right}</b></li>`;
+      <span class="pn"><b>${pName(pl.id.uid, pl.id.name)}<em>#${esc(pl.id.tag)}</em>${pl.me ? '<u>you</u>' : ''}</b><small>${sub}</small></span><b class="sc">${right}</b></li>`;
 }
 /* ----- Home page: the players and the tier boards ----- */
 function renderPlayers(players) {
@@ -1952,7 +1960,7 @@ function renderPlayers(players) {
     $('players').innerHTML = sortPlayers(players.filter(pl => !pl.me || loggedIn()), now).map(pl => {
         const on = isOnline(pl, now), seen = on ? 'Online' : agoShort(lastSeen(pl, now), now);
         return `<button class="ptile${pl.me ? ' me' : ''}${pl.remote ? ' remote' : ''}${on ? ' online' : ''}" data-player="${esc(pl.key)}" title="Open ${esc(pl.id.name)}'s profile">
-      <i class="sdot ${on ? 'on' : 'off'}" title="${on ? 'Online' : 'Offline'}"></i>${pl.me ? '<i class="youbadge">You</i>' : ''}${avatarSVG(pl.id, 64)}<b>${esc(pl.id.name)}</b><small>Lv ${levelOf(pl.profile.xp)}</small><span class="ttl">${esc(titleOf(pl).name)}</span>
+      <i class="sdot ${on ? 'on' : 'off'}" title="${on ? 'Online' : 'Offline'}"></i>${pl.me ? '<i class="youbadge">You</i>' : ''}${avatarSVG(pl.id, 64)}<b>${pName(pl.id.uid, pl.id.name)}</b><small>Lv ${levelOf(pl.profile.xp)}</small><span class="ttl">${esc(titleOf(pl).name)}</span>
       <em class="seen${on ? ' on' : ''}" title="${on ? 'Online now' : 'Last online'}">${seen ? esc(seen) : 'Offline'}</em></button>`;
     }).join('') || '<p class="muted small">No players yet.</p>';
     checkOnlineToasts(players, now);
@@ -1969,7 +1977,7 @@ function checkOnlineToasts(players, now = Date.now()) {
 function presenceToast(pl) {
     const box = $('chatToasts'), el = document.createElement('div');
     el.className = 'ctoast presence';
-    el.innerHTML = `${avatarSVG(pl.id, 30)}<div class="grow"><b>${esc(pl.id.name)}</b><span><i class="sdot on"></i>is online now · Lv ${levelOf(pl.profile.xp)} ${esc(titleOf(pl).name)}</span></div><button class="x" title="Close" aria-label="Close">×</button>`;
+    el.innerHTML = `${avatarSVG(pl.id, 30)}<div class="grow"><b>${pName(pl.id.uid, pl.id.name)}</b><span><i class="sdot on"></i>is online now · Lv ${levelOf(pl.profile.xp)} ${esc(titleOf(pl).name)}</span></div><button class="x" title="Close" aria-label="Close">×</button>`;
     box.prepend(el);
     while (box.children.length > 4)
         box.lastChild.remove();
@@ -1984,8 +1992,13 @@ function moveTag(d) {
     return d === 'new' ? '<i class="mv new" title="New on this board">NEW</i>' : d > 0 ? `<i class="mv up" title="Up ${d}"><span class="arr">▲</span>${d}</i>`
         : d < 0 ? `<i class="mv down" title="Down ${-d}"><span class="arr">▼</span>${-d}</i>` : '<i class="mv same" title="No change">–</i>';
 }
+/** A player's name as HTML: the World Boss Champion's shines (css .champname). */
+function pName(uid, name) {
+    const n = esc(name);
+    return uid && uid === WB_CHAMP_UID ? `<span class="champname" title="World Boss Champion">${n}</span>` : n;
+}
 function whoCell(pl, sub) {
-    return `<td class="who"><div class="wc">${avatarSVG(pl.id, 30)}<span><b>${esc(pl.id.name)}${pl.me ? '<u>you</u>' : ''}</b><small>${sub}</small></span></div></td>`;
+    return `<td class="who"><div class="wc">${avatarSVG(pl.id, 30)}<span><b>${pName(pl.id.uid, pl.id.name)}${pl.me ? '<u>you</u>' : ''}</b><small>${sub}</small></span></div></td>`;
 }
 /** Global Top 10: medal points from the stage boards (gold 3, silver 2, bronze 1), laid out as a medal table. */
 function globalTable(players) {
@@ -2346,7 +2359,7 @@ function openProfileCard(key = ACTIVE_KEY) {
     const others = players.length - 1;
     openModal('profile', `<div class="cardhead"><h2>${me ? 'Your profile' : pl.remote ? 'Player <small class="muted">· another PC</small>' : 'Player'}</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
     <div class="pcard"><div class="pav">${avatarSVG(p, 120)}</div><div class="grow">
-      <div class="pname">${esc(p.name)}<span>#${esc(p.tag)}</span></div><div class="ptitle">${esc(title.name)}</div>
+      <div class="pname">${pName(p.uid, p.name)}<span>#${esc(p.tag)}</span></div><div class="ptitle">${esc(title.name)}</div>
       ${nt ? `<div class="pnext">Next title: <b>${esc(nt.name)}</b> · ${P.pops.toLocaleString()} / ${nt.pops.toLocaleString()} pops</div>` : '<div class="pnext">Highest title reached</div>'}
       <div class="medalrow" title="1st, 2nd and 3rd places held on Standard stage boards">${MEDALS.map(m => `<span><img src="assets/ui/medal-${m}.svg" alt="${m}">${md[m]}</span>`).join('')}<small class="muted">${medalPoints(md)} pts${p.uid && p.uid === CROWN_UID ? ' · <b class="crownc">Global #1</b>' : ''}${others ? '' : ' · add players to compete'}</small></div>
       <div class="lvlbig"><b>Level ${L}</b><div class="xpbar"><i style="width:${Math.round(100 * (P.xp - cur) / (next - cur))}%"></i></div><span>${(P.xp - cur).toLocaleString()} / ${(next - cur).toLocaleString()} XP to level ${L + 1}</span></div>
@@ -2385,7 +2398,7 @@ function wbInfoHTML() {
       <span class="muted">${esc(p.boss.build)} · ${mode ? 'open now, ends ' + new Date(wbOpenEnd()).toLocaleString(undefined, { weekday: 'long', hour: 'numeric', minute: '2-digit' }) + ' (your time) · ' + wbLeft(wbOpenEnd()) + ' left' : 'opens ' + wbOpensTxt() + ' (your time) · in ' + wbLeft(nx.at)}</span></div></div>
     <ul>
       <li>Once a week, everyone fights the same <b>World Boss</b> on the same map. The boss and the map are picked at random each week, never the same pair twice in a row.</li>
-      <li>It is fought twice, both days from <b>7:30 AM to 5:00 PM Philippine time</b>: <b>Normal on Thursday</b> and <b>Elite on Friday</b>. Each day has its own Top 10 board. A run still going at 5:00 PM ends, and its damage counts.</li>
+      <li>It is fought twice, both days from <b>7:30 AM to 5:00 PM Philippine time</b>: <b>Normal on Thursday</b> and <b>Elite on Friday</b>. Each day has its own Top 5 board. A run still going at 5:00 PM ends, and its damage counts.</li>
       <li>At <b>5:01 PM on Friday</b> the <b>World Boss Champion</b> is announced to every player, even in the middle of a game (it pauses): #1 on the Elite board (or on the Normal board if nobody played Elite). Everyone also gets a notification with the top 3.</li>
       <li>You start with the boss's lives (<b>${p.boss.lives.toLocaleString()}</b> this week) and its start money. Press <b>PLAY</b> to start round 1.</li>
       <li>It is played in <b>rounds</b>, like a normal game. The next round starts by itself as soon as this round's balloons are popped (or after ${WB_ROUND_MAX} seconds), and <b>rounds keep going while a boss is out</b>. Every round pays its round bonus and Gold Mine income, so farms keep making money.</li>
@@ -2394,13 +2407,13 @@ function wbInfoHTML() {
       <li><b>Skulls</b> on its health bar: when its health drops past one it uses its skill (this week: <b>${esc(WB_SKILLS[p.boss.skill] || '')}</b>). At the last, flaming skull it gets <b>angry</b>: 25% faster, and it summons more often. Elite has one more skull on every tier.</li>
       <li>The boss can't be frozen, stunned or slowed. Towers with extra damage to blimps do that extra damage to it too.</li>
       <li>It summons balloons every <b>15 seconds</b>, every <b>10 seconds</b> after 10 minutes, and every <b>5 seconds</b> after 20 minutes. They get <b>1% stronger every minute</b>, and tougher kinds come in over time: ceramics from 18 minutes, blimps from 24. Balloons that reach the END take lives.</li>
-      <li><b>Ranking:</b> popping all ${WB_TIERS.length} tiers ranks first, then the <b>fastest</b>, then the <b>most lives left</b>. Runs that don't pop all ${WB_TIERS.length} rank below every win, by the <b>damage you deal</b>. Your best run of the day counts on that day's board, at the bottom of the leaderboards.</li>
-      <li>The <b>Champion</b> wears the exclusive <b>World Boss Legend</b> border for 7 days, until the next champion is announced. Nobody else can wear it.</li>
+      <li><b>Ranking:</b> popping all ${WB_TIERS.length} tiers ranks first, then the <b>fastest</b>, then the <b>most lives left</b>. Runs that don't pop all ${WB_TIERS.length} rank below every win, by the <b>damage you deal</b>: every hit on the boss in full, plus every balloon layer you pop, with no cap. Your best run of the day counts on that day's board, at the bottom of the leaderboards.</li>
+      <li>The <b>Champion</b> unlocks <b>10 exclusive Champion borders</b> for 7 days, until the next champion is announced, and can switch between them any time in <b>Edit profile</b>. The one they pick shows on their avatar everywhere. Nobody else can wear them.</li>
       <li>World Boss runs don't count on the tier or stage boards, and they can't be saved half-way: your damage so far always counts.</li>
     </ul>
     <h3>The four bosses</h3>
     <table class="wbtable"><thead><tr><th></th><th class="l">Boss</th><th>Speed</th><th>Defense</th><th>HP (tiers 1–5)</th><th>Skull skill</th><th>Summons</th><th>Lives</th><th>Start money</th></tr></thead>
-    <tbody>${WB_BOSSES.map(b => `<tr><td>${wbImg(b.id, 'wbart sm')}</td><td class="l"><b>${esc(b.name)}</b><small class="muted">${esc(b.build)}</small></td><td>${b.speed}</td><td>${esc(b.defTxt)}</td><td>${wbTierStats(1, false, b).hp.toLocaleString()}–${b.hp.toLocaleString()}</td><td>${esc(WB_SKILLS[b.skill] || '')}</td><td>${esc(b.summonTxt)}</td><td>${b.lives.toLocaleString()}</td><td>${money(b.cash)}</td></tr>`).join('')}</tbody></table>
+    <tbody>${WB_BOSSES.map(b => `<tr><td>${wbImg(b.id, 'wbart sm')}</td><td class="l"><b>${esc(b.name)}</b><small class="muted">${esc(b.build)}</small>${wbModsHTML(b)}</td><td>${b.speed}</td><td>${esc(b.defTxt)}</td><td>${wbTierStats(1, false, b).hp.toLocaleString()}–${b.hp.toLocaleString()}</td><td>${esc(WB_SKILLS[b.skill] || '')}</td><td>${esc(b.summonTxt)}</td><td>${b.lives.toLocaleString()}</td><td>${money(b.cash)}</td></tr>`).join('')}</tbody></table>
     <h3>The four maps</h3><div class="wbmaps">${WB_MAPS.map(m => `<div><canvas data-wbmap="${m.id}"></canvas><b>${esc(m.name)}</b><span class="muted small">${esc(m.desc)}</span></div>`).join('')}</div>`;
 }
 /** Draws the small World Boss map previews inside an element. */
@@ -2412,13 +2425,51 @@ function fillWbMaps(root) {
     });
 }
 /** A World Boss board result: the time and lives left when all tiers were popped, else the tiers popped and damage. */
+/** The boss's modifiers as chips: "Swarm -20%", "Strength +20%", "Boss aura DEF +20%". Red is harder, green easier. */
+function wbModsHTML(b) {
+    const m = wbModsOf(b);
+    return m.length ? '<div class="wbmods">' + m.map(x => '<span class="wbmod ' + (x.k === 'aura' ? 'aura' : x.v * x.harder > 0 ? 'up' : 'down') + '"' + (x.k === 'aura' ? ' title="Balloons near the boss take ' + x.v + '% less damage"' : '') + '>' + x.name + ' ' + (x.v > 0 ? '+' : '') + x.v + '%</span>').join('') + '</div>' : '';
+}
 function wbResult(x) {
     const h = x.h || {};
-    return h.won ? '<b class="okc">Won</b> ' + fmtClock(+h.t || 0) + ' · ' + (+h.lives || 0).toLocaleString() + ' lives'
-        : (h.tiers ? 'T' + h.tiers + ' · ' : '') + x.d.toLocaleString() + ' dmg';
+    const res = h.won ? '<b class="okc">Won</b>' : 'T' + (h.tiers || 0);
+    return res + ' · ' + fmtClock(+h.t || 0) + ' · ' + (+h.lives || 0).toLocaleString() + ' lives · ' + shortNum(x.d) + ' dmg';
+}
+/** A board row's result in four cells, in ranking order: Result (Won, or the tiers popped) | Time | Lives left | Damage. */
+function wbCells(x) {
+    const h = x.h || {};
+    return `<td class="n wbres">${h.won ? '<b class="okc">Won</b>' : '<span title="Tiers popped">T' + (h.tiers || 0) + '</span>'}</td><td class="n tot">${fmtClock(+h.t || 0)}</td>`
+        + `<td class="n tot">${(+h.lives || 0).toLocaleString()}</td><td class="n tot" title="${Math.round(x.d).toLocaleString()} damage">${shortNum(x.d)}</td>`;
+}
+/** A big number, short: 950, 12.5k, 18.9m, 1.2b. */
+function shortNum(n) {
+    n = +n || 0;
+    const a = Math.abs(n), d = a >= 1e9 ? 1e9 : a >= 1e6 ? 1e6 : a >= 1e3 ? 1e3 : 0;
+    return d ? +(n / d).toFixed(1) + (d === 1e9 ? 'b' : d === 1e6 ? 'm' : 'k') : String(Math.round(n));
 }
 /** The event whose boards to show: this week's once Thursday's fight has started, else last week's. */
 function wbBoardWeek(now = wbNow()) { const k = wbWeek(now); return now >= wbDayStart(k, false) ? k : k - 1; }
+/** 5.2.1: the champion prize on the World Boss banner: the 10 Champion borders on your own animal. Click for a closer look. */
+function champPrizeStrip() {
+    const id = getId() || {}, look = (b) => ({ animal: id.animal || 'fox', style: id.style || 'm', bg: id.bg || 'sky', border: b.id, champ: true });
+    return `<button class="champprize" data-act="champprize" title="See the Champion prize"><span class="cpl"><b>Champion prize</b><small>10 exclusive borders · 7 days</small></span>
+      <span class="cpavs">${BORDERS.filter(b => b.champ).map(b => avatarSVG(look(b), 30)).join('')}</span></button>`;
+}
+/** The Champion prize window: every Champion border as a card on your own avatar. The champion can go and pick one. */
+function openChampPrize() {
+    const id = getId() || {}, me = !!(id.uid && id.uid === WB_CHAMP_UID), cur = champBorderId(id.cb);
+    openModal('champprize', `<div class="cardhead"><h2>Champion prize</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
+    <p class="lead">The World Boss Champion (Elite #1, announced Friday at 5:01 PM) unlocks all 10 of these borders for 7 days and can switch between them any time. Nobody else can wear them.</p>
+    ${champCardsHTML(id, me ? cur : '', false)}
+    <div class="row">${me ? '<button class="btn primary" data-act="champpick">Choose my border</button>' : ''}<button class="btn" data-act="close">Close</button></div>`, 'wide');
+}
+/** Edit profile, scrolled to the Champion border picker. */
+function openChampPick() {
+    openEditProfile();
+    const el = document.querySelector('#modal .champpick');
+    if (el)
+        el.scrollIntoView({ block: 'center' });
+}
 /** The World Boss banner and its board, at the bottom of the leaderboards. */
 function renderWorldBoss(players = allPlayers()) {
     const el = $('wbBox');
@@ -2428,19 +2479,20 @@ function renderWorldBoss(players = allPlayers()) {
     const board = bk >= WB_FIRST ? wbBoard(bk, players, elite) : [], mine = board.find(x => x.p.me), today = open && (mode === 'elite') === elite && bk === k;
     refreshWbChamp(players);
     const champ = WB_CHAMP_UID ? players.find(x => x.id.uid === WB_CHAMP_UID) : null;
-    const rows = board.slice(0, 10).map(x => `<tr class="${x.p.me ? 'me' : ''}" data-player="${esc(x.p.key)}" title="Open ${esc(x.p.id.name)}'s profile">
-      <td class="rk">${x.rank <= 3 ? rankBadge(x.rank, 20) : '<b>' + x.rank + '</b>'}</td>${whoCell(x.p, esc(titleOf(x.p).name))}<td class="n tot">${wbResult(x)}</td></tr>`).join('');
+    const rows = board.slice(0, 5).map(x => `<tr class="${x.p.me ? 'me' : ''}" data-player="${esc(x.p.key)}" title="Open ${esc(x.p.id.name)}'s profile">
+      <td class="rk">${x.rank <= 3 ? rankBadge(x.rank, 20) : '<b>' + x.rank + '</b>'}</td>${whoCell(x.p, esc(titleOf(x.p).name))}${wbCells(x)}</tr>`).join('');
     el.innerHTML = `<div class="wbbanner" style="--wbc:${BT[p.boss.id].col}">
       <div class="wbhead"><span class="wbtag">WORLD BOSS</span><span class="wbtimer" id="wbTimer">${wbTimerHTML()}</span></div>
-      <div class="wbbody">${wbImg(p.boss.id, 'wbart')}<div class="wbtxt"><h3>${esc(p.boss.name)}</h3><div class="wbbuild">${esc(p.boss.build)}</div>
+      <div class="wbbody">${wbImg(p.boss.id, 'wbart')}<div class="wbtxt"><h3>${esc(p.boss.name)}</h3><div class="wbbuild">${esc(p.boss.build)}</div>${wbModsHTML(p.boss)}
         <div class="wbmeta"><span>Map: <b>${esc(p.map.name)}</b></span><span>HP <b>${p.boss.hp.toLocaleString()}</b></span><span>Start <b>${money(p.boss.cash)}</b> · <b>${p.boss.lives.toLocaleString()}</b> lives</span></div>
         <div class="row left">${open ? '<button class="btn primary big" data-act="wbfight">Fight · ' + (mode === 'elite' ? 'Elite' : 'Normal') + '</button>' : '<button class="btn big" disabled>' + (wbNextStart().elite ? 'Elite' : 'Normal') + ' opens ' + esc(wbOpensTxt()) + '</button>'}</div></div></div>
-      <div class="wbfoot muted small">Normal on Thursday, Elite on Friday, 7:30 AM to 5:00 PM (PH time) · ${WB_TIERS.length} tiers, the boss must not reach the END · the Champion (Elite #1) is announced on Friday at 5:01 PM and wears the World Boss Legend border for 7 days${champ ? ' · Champion: <b>' + esc(champ.id.name) + '</b>' : ''}</div></div>
-    <div class="mtable wbboard"><div class="mthead"><h3><img src="assets/ui/trophy.svg" alt="">World Boss · ${today ? 'Top 10 today' : bk === k ? 'This week' : 'Last event'}</h3>
+      ${champPrizeStrip()}
+      <div class="wbfoot muted small">Normal on Thursday, Elite on Friday, 7:30 AM to 5:00 PM (PH time) · ${WB_TIERS.length} tiers, the boss must not reach the END · the Champion (Elite #1) is announced on Friday at 5:01 PM and unlocks 10 exclusive Champion borders for 7 days${champ ? ' · Champion: <b>' + esc(champ.id.name) + '</b>' : ''}</div></div>
+    <div class="mtable wbboard"><div class="mthead"><h3><img src="assets/ui/trophy.svg" alt="">World Boss · ${today ? 'Top 5 today' : bk === k ? 'This week' : 'Last event'}</h3>
       <span class="wbtabs"><button class="wbtab${elite ? ' on' : ''}" data-act="wbtab" data-tab="elite">Elite</button><button class="wbtab${elite ? '' : ' on'}" data-act="wbtab" data-tab="normal">Normal</button></span></div>
-    <table><thead><tr><th></th><th class="l">Top 10 players</th><th>Result</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="3" class="empty muted small">' + (today ? 'Nobody has fought the boss yet today. Be the first!' : 'No ' + (elite ? 'Elite' : 'Normal') + ' results yet. ' + (elite ? 'Elite is on Friday' : 'Normal is on Thursday') + ' from 7:30 AM (PH time).') + '</td></tr>'}</tbody></table>
-    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${board.length} · best ${wbResult(mine)}` : today ? 'Fight the boss to rank' : 'Only the Champion wears the Legend border'} · wins first, then fastest, then most lives, then damage</div></div>`;
+    <div class="wbrows"><table><thead><tr><th></th><th class="l">Top 5 players</th><th>Result</th><th>Time</th><th>Lives</th><th>Dmg</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" class="empty muted small">' + (today ? 'Nobody has fought the boss yet today. Be the first!' : 'No ' + (elite ? 'Elite' : 'Normal') + ' results yet. ' + (elite ? 'Elite is on Friday' : 'Normal is on Thursday') + ' from 7:30 AM (PH time).') + '</td></tr>'}</tbody></table></div>
+    <div class="tbsub">${mine ? `You: <b>#${mine.rank}</b> of ${board.length} · best ${wbResult(mine)}` : today ? 'Fight the boss to rank' : 'Only the Champion wears the Champion borders'} · wins first, then fastest, then most lives, then damage</div></div>`;
 }
 $('wbBox').addEventListener('click', (e) => {
     const t = e.target as any, a = t.closest('[data-act]'), r = t.closest('[data-player]');
@@ -2450,6 +2502,8 @@ $('wbBox').addEventListener('click', (e) => {
         UI.wbTab = a.dataset.tab;
         renderWorldBoss();
     }
+    else if (a && a.dataset.act === 'champprize')
+        openChampPrize();
     else if (r)
         openProfileCard(r.dataset.player);
 });
@@ -2496,17 +2550,17 @@ function checkWbChampModal() {
 /** The greeting card: the champion's avatar in the Legend border, their name, the boss and their damage, silver and bronze. */
 function wbChampHTML(c, players) {
     const me = c.p.me, name = esc(c.p.id.name), board = wbBoard(c.k, players, c.elite), map = wbPick(c.k).map;
-    const others = board.slice(1, 3).map(x => `<span>${rankBadge(x.rank, 18)} ${esc(x.p.id.name)} · ${wbResult(x)}</span>`).join('');
+    const others = board.slice(1, 3).map(x => `<span>${rankBadge(x.rank, 18)} ${pName(x.p.id.uid, x.p.id.name)} · ${wbResult(x)}</span>`).join('');
     return `<div class="confetti">${Array.from({ length: 24 }, (_, i) => `<i style="--i:${i};--c:${['#ffd93d', '#ce93d8', '#4fc3f7', '#ff6b6b', '#ffffff'][i % 5]}"></i>`).join('')}</div>
     <div class="wbchamp">
       <div class="wbtag">WORLD BOSS CHAMPION · ${c.elite ? 'ELITE' : 'NORMAL'}</div>
       <div class="wbc-av">${avatarSVG(avatarOf(c.p.id), 168)}</div>
-      <h2>${me ? 'Congratulations, you are the World Boss Champion!' : 'Congratulations, ' + name + '!'}</h2>
+      <h2>${me ? 'Congratulations, <span class="champname">you</span> are the World Boss Champion!' : 'Congratulations, ' + pName(c.p.id.uid, c.p.id.name) + '!'}</h2>
       <p class="lead">${me ? 'You' : name} ${c.h && c.h.won ? 'popped all ' + WB_TIERS.length + ' tiers of' : 'dealt the most damage to'} <b>${esc(c.boss.name)}</b>${c.h && c.h.won ? ' the fastest' : ''} on ${esc(map.name)}.</p>
       <div class="wbc-dmg"><b>${c.h && c.h.won ? fmtClock(+c.h.t || 0) : c.d.toLocaleString()}</b><span>${c.h && c.h.won ? 'time · ' + (+c.h.lives || 0).toLocaleString() + ' lives left' : 'damage'}</span></div>
-      <div class="wbc-border">The exclusive <b>World Boss Legend</b> border is ${me ? 'yours' : name + '\'s'} for 7 days, until the next champion is announced. Only the Champion can wear it.</div>
+      <div class="wbc-border">${me ? 'You unlocked' : name + ' unlocked'} <b>10 exclusive Champion borders</b> for 7 days, until the next champion is announced. ${me ? 'Pick yours any time in <b>Edit profile</b>: it shows on your avatar everywhere.' : 'Only the Champion can wear them.'}</div>
       ${others ? `<div class="wbc-others">${others}</div>` : ''}
-      <div class="row"><button class="btn primary big" data-act="champok">${me ? 'Thank you!' : 'Congratulations!'}</button></div>
+      <div class="row">${me ? '<button class="btn primary big" data-act="champpick">Choose my border</button><button class="btn big" data-act="champok">Later</button>' : '<button class="btn primary big" data-act="champok">Congratulations!</button>'}</div>
     </div>`;
 }
 /** Closes the greeting: back to what was on screen, or the pause menu when a game was running. */
@@ -2536,7 +2590,7 @@ function openWbNews() {
     UI.wbNewsOpen = true;
     const stat = (label, val) => `<div class="wbn-stat"><span>${label}</span><b>${val}</b></div>`;
     const today = !open ? '' : mine ? `You are <b>#${mine.rank}</b> today with <b>${wbResult(mine)}</b>. Beat it!`
-        : board.length ? `<b>${board.length}</b> player${board.length > 1 ? 's have' : ' has'} fought it today · leader <b>${esc(board[0].p.id.name)}</b> ${wbResult(board[0])}`
+        : board.length ? `<b>${board.length}</b> player${board.length > 1 ? 's have' : ' has'} fought it today · leader <b>${pName(board[0].p.id.uid, board[0].p.id.name)}</b> ${wbResult(board[0])}`
             : 'Nobody has fought it yet today. <b>Be the first!</b>';
     openModal('wbnews', `<div class="wbn" style="--wbc:${col}">
       <button class="iconbtn x wbn-x" data-act="wbnews-close" title="Close"><img src="assets/ui/close.svg" alt="Close"></button>
@@ -2554,7 +2608,7 @@ function openWbNews() {
       </div>
       <div class="wbn-stats">${stat('Tiers', String(WB_TIERS.length))}${stat('HP', wbTierStats(1, false, p.boss).hp.toLocaleString() + '–' + p.boss.hp.toLocaleString())}${stat('Boss rounds', WB_TIERS_TXT())}${stat('Skull skill', esc((WB_SKILLS[p.boss.skill] || '').split(':')[0]))}${stat('Speed', esc(p.boss.speed))}${stat('Defense', esc(p.boss.defTxt.replace(/ \(.*\)/, '')))}${stat('Summons', esc(p.boss.summonTxt))}${stat('Lives', p.boss.lives.toLocaleString())}${stat('Start', money(p.boss.cash))}</div>
       ${today ? `<div class="wbn-today">${today}</div>` : ''}
-      ${c ? `<div class="wbn-champ">${avatarSVG(avatarOf(c.p.id), 46)}<div><small>Reigning champion</small><b>${esc(c.p.id.name)}</b><span>${c.h && c.h.won ? 'Beat ' + esc(c.boss.name) + (c.elite ? ' (Elite)' : '') + ' in ' + fmtClock(+c.h.t || 0) : c.d.toLocaleString() + ' damage on ' + esc(c.boss.name)}</span></div></div>` : ''}
+      ${c ? `<div class="wbn-champ">${avatarSVG(avatarOf(c.p.id), 46)}<div><small>Reigning champion</small><b>${pName(c.p.id.uid, c.p.id.name)}</b><span>${c.h && c.h.won ? 'Beat ' + esc(c.boss.name) + (c.elite ? ' (Elite)' : '') + ' in ' + fmtClock(+c.h.t || 0) : c.d.toLocaleString() + ' damage on ' + esc(c.boss.name)}</span></div></div>` : ''}
       <div class="wbn-actions"><button class="btn" data-act="wbinfo">How it works</button>${open ? '<button class="btn" data-act="wbnews-close">Later</button><button class="btn primary big wbn-fight" data-act="wbnews-fight">⚔ Fight now</button>' : '<button class="btn primary big" data-act="wbnews-close">Got it</button>'}</div>
     </div>`, 'wbncard');
 }
@@ -2642,7 +2696,7 @@ function chatRowHTML(m, players, prev?, next?, isLast?) {
     const last = !next || nextLine || !(next.uid === m.uid && next.at - m.at < CHAT_GAP_RUN);
     const look = me ? Object.assign({}, m, { animal: myId.animal, style: myId.style, bg: myId.bg, border: myId.border, name: myId.name, title: currentTitle(myId).name }) : m;
     const av = first ? avatarSVG({ uid: m.uid, animal: look.animal, style: look.style, bg: look.bg, border: look.border }, 36) : '<span class="cav"></span>';
-    const head = first ? `<div class="chead"><b>${esc(look.name)}</b>${me ? '<u>you</u>' : ''}${chatBadge(m.uid, players)}${look.title ? `<span class="ctitle">${esc(look.title)}</span>` : ''}</div>` : '';
+    const head = first ? `<div class="chead"><b>${pName(m.uid, look.name)}</b>${me ? '<u>you</u>' : ''}${chatBadge(m.uid, players)}${look.title ? `<span class="ctitle">${esc(look.title)}</span>` : ''}</div>` : '';
     const emojiOnly = /^(?:\p{Extended_Pictographic}|\p{Emoji_Component}|️|‍|\s)+$/u.test(m.text) && !/[0-9#*]/.test(m.text) && [...m.text.replace(/\s/g, '')].length <= 12;
     const exact = new Date(m.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
     const sent = me && isLast ? `<div class="csent">Sent ${agoShort(m.at, now)}</div>` : '';
@@ -2755,7 +2809,7 @@ function pumpChatToasts() {
     while (chatQueue.length && box.querySelectorAll('.ctoast:not(.out)').length < CHAT_TOAST_MAX) {
         const m = chatQueue.shift(), el = document.createElement('div');
         el.className = 'ctoast';
-        el.innerHTML = `${avatarSVG({ uid: m.uid, animal: m.animal, style: m.style, bg: m.bg, border: m.border }, 30)}<div class="grow"><b>${esc(m.name)}</b>
+        el.innerHTML = `${avatarSVG({ uid: m.uid, animal: m.animal, style: m.style, bg: m.bg, border: m.border }, 30)}<div class="grow"><b>${pName(m.uid, m.name)}</b>
           <span>${esc(m.text)}</span></div><button class="x" title="Close" aria-label="Close">×</button>`;
         box.prepend(el);
         let gone = false;
@@ -2845,7 +2899,7 @@ function renderMaster(msg?) {
     <p class="muted small" style="margin:0 0 8px"><b>Reset password</b>: the player makes a new password at their next log-in. <b>Delete account</b>: removed from every PC (its backups stay, so it can be restored). <b>Restore account</b>: brought back from its backups, with its password.</p>
     ${msg ? `<div class="mmsg">${esc(msg)}</div>` : ''}
     <div class="histwrap mtable"><table class="mastertable"><tbody>${list.map(row).join('') || '<tr><td class="muted">No accounts yet.</td></tr>'}</tbody></table></div>
-    <div class="row" style="justify-content:space-between"><span><button class="btn" data-act="master-changepw">Change master password</button> <button class="btn" data-act="master-wb">⚔ World Boss setup</button></span><button class="btn primary" data-act="master-close">Done</button></div>`, 'wide');
+    <div class="row" style="justify-content:space-between"><span><button class="btn" data-act="master-changepw">Change master password</button> <button class="btn" data-act="master-wb">⚔ World Boss setup</button> <button class="btn" data-act="master-tw">🗼 Tower setup</button></span><button class="btn primary" data-act="master-close">Done</button></div>`, 'wide');
 }
 /** 5.1.1: World Boss setup in master control: each boss's name, HP, defense, start money, lives and summon size.
     Saved with the master control data, so every PC on the shared folder uses it. Runs already going keep their build. */
@@ -2853,7 +2907,7 @@ function renderMasterWb(msg?, err?) {
     const cur = wbPick(wbWeek()).boss.id, num = (id, f, v, min, max, step = 1) =>
         `<input type="number" data-boss="${id}" data-f="${f}" value="${v}" min="${min}" max="${max}" step="${step}">`;
     const row = (b) => {
-        const d = WB_DEFAULTS.find(x => x.id === b.id), changed = ['name', 'hp', 'def', 'cash', 'lives', 'count'].some(k => b[k] !== d[k]);
+        const d = WB_DEFAULTS.find(x => x.id === b.id), changed = ['name', 'hp', 'def', 'cash', 'lives', 'count', 'swarm', 'str', 'gold', 'aura'].some(k => b[k] !== d[k]);
         return `<tr${b.id === cur ? ' class="now"' : ''}><td>${wbImg(b.id, 'wbart sm')}</td>
         <td class="l"><input type="text" data-boss="${b.id}" data-f="name" value="${esc(b.name)}" maxlength="20" placeholder="${esc(d.name)}"><small class="muted">${b.id === cur ? '<b class="okc">This week</b> · ' : ''}${esc(d.speed)} · default ${esc(d.name)}${changed ? ' · <b>changed</b>' : ''}</small></td>
         <td>${num(b.id, 'hp', b.hp, WB_LIMITS.hp[0], WB_LIMITS.hp[1], 1000)}</td>
@@ -2861,15 +2915,16 @@ function renderMasterWb(msg?, err?) {
         <td>${num(b.id, 'cash', b.cash, WB_LIMITS.cash[0], WB_LIMITS.cash[1], 500)}</td>
         <td>${num(b.id, 'lives', b.lives, WB_LIMITS.lives[0], WB_LIMITS.lives[1], 100)}</td>
         <td>${num(b.id, 'count', b.count, WB_LIMITS.count[0], WB_LIMITS.count[1])}</td>
+${WB_MODS.map(m => '        <td>' + num(b.id, m.k, b[m.k] || 0, WB_LIMITS[m.k][0], WB_LIMITS[m.k][1], 5) + '</td>').join('')}
         <td><button class="btn small" data-act="master-wbdef" data-boss="${b.id}" title="Put this boss back to its default build">Default</button></td></tr>`;
     };
     const cfg = adminData().wb;
     openModal('master', `<div class="cardhead"><h2>World Boss setup</h2><button class="iconbtn x" data-act="master-back"><img src="assets/ui/close.svg" alt="Close"></button></div>
-    <p class="muted small" style="margin:0 0 8px"><b>Damage taken</b>: 100% is normal defense, 60% takes 40% less damage, 150% takes 50% more. <b>Summon</b>: balloons per summon.
+    <p class="muted small" style="margin:0 0 8px"><b>Damage taken</b>: 100% is normal defense, 60% takes 40% less damage, 150% takes 50% more. <b>Summon</b>: balloons per summon. <b>Swarm</b>: more or fewer balloons per summon. <b>Strength</b>: summoned balloons' health. <b>Gold gain</b>: cash from pops and rounds. <b>Aura DEF</b>: balloons near the boss take this much less damage. 0 = off.
       Changes reach every PC on the shared folder; runs already going keep the build they started with.${cfg ? ' Last saved ' + agoShort(cfg.at) + '.' : ''}</p>
     ${Share.connected() ? '' : '<div class="warnline">The shared folder isn\'t connected: this setup is only kept on this PC.</div>'}
     ${msg ? `<div class="mmsg">${esc(msg)}</div>` : ''}<div class="err" id="wbErr">${err ? esc(err) : ''}</div>
-    <div class="histwrap"><table class="wbtable wbsetup"><thead><tr><th></th><th class="l">Name</th><th>HP</th><th>Damage taken %</th><th>Start money</th><th>Lives</th><th>Summon</th><th></th></tr></thead>
+    <div class="histwrap"><table class="wbtable wbsetup"><thead><tr><th></th><th class="l">Name</th><th>HP</th><th>Damage taken %</th><th>Start money</th><th>Lives</th><th>Summon</th><th>Swarm %</th><th>Strength %</th><th>Gold gain %</th><th>Aura DEF %</th><th></th></tr></thead>
     <tbody>${WB_BOSSES.map(row).join('')}</tbody></table></div>
     <div class="row" style="justify-content:space-between"><button class="btn danger" data-act="master-wbreset">Reset all to default</button>
       <span><button class="btn" data-act="master-back">Back</button> <button class="btn primary" data-act="master-wbsave">Save</button></span></div>`, 'wide');
@@ -2884,15 +2939,71 @@ function readMasterWb(only?) {
         x.name = String(get('name')).replace(/\s+/g, ' ').trim();
         if (!x.name)
             return d.name + ': type a name';
-        for (const f of ['hp', 'def', 'cash', 'lives', 'count']) {
+        for (const f of ['hp', 'def', 'cash', 'lives', 'count', 'swarm', 'str', 'gold', 'aura']) {
             const raw = String(get(f)).trim(), v = +raw, [lo, hi] = WB_LIMITS[f].map(n => f === 'def' ? n * 100 : n);
             if (raw === '' || !isFinite(v) || v < lo || v > hi)
-                return x.name + ': ' + { hp: 'HP', def: 'damage taken', cash: 'start money', lives: 'lives', count: 'summon size' }[f] + ' must be ' + lo.toLocaleString() + ' to ' + hi.toLocaleString();
+                return x.name + ': ' + { hp: 'HP', def: 'damage taken', cash: 'start money', lives: 'lives', count: 'summon size', swarm: 'swarm', str: 'strength', gold: 'gold gain', aura: 'aura DEF' }[f] + ' must be ' + lo.toLocaleString() + ' to ' + hi.toLocaleString() + (['swarm', 'str', 'gold', 'aura'].includes(f) ? '%' : '');
             x[f] = f === 'def' ? v / 100 : v;
         }
         bosses[d.id] = x;
     }
     return { at: Date.now(), bosses };
+}
+/** Which tower setup fields mean something for a tower: a stat it has at some level (cost and upgrade cost always). */
+function twFieldsOf(type) {
+    const has = { cost: true, up: true }, lvls = [[0, 0, 0], [5, 0, 0], [0, 5, 0], [0, 0, 5], [5, 5, 0], [0, 5, 5], [5, 0, 5]];
+    for (const lv of lvls) {
+        const s = statsFor(type, lv, null);
+        if (s.dmg) has['dmg'] = true;
+        if (s.rate) has['rate'] = true;
+        if ((s.range && s.range < 2000) || s.aura) has['range'] = true;
+        if (s.pierce) has['pierce'] = true;
+        if (s.income > 0) has['income'] = true;
+    }
+    return has;
+}
+/** 5.2.1: Tower setup in master control: buff or nerf any tower, in percent of normal (100% = as shipped). Saved with
+    the master control data, so every PC on the shared folder plays the same towers. Games in progress pick it up too. */
+/** Green for a buff, red for a nerf (for costs, higher is a nerf). */
+function twClass(k, v) { const d = (v - 100) * (k === 'cost' || k === 'up' ? -1 : 1); return d > 0 ? 'twup' : d < 0 ? 'twdown' : ''; }
+function renderMasterTw(msg?, err?) {
+    const row = (type) => {
+        const d = TD[type], has = twFieldsOf(type), cur = TW_CFG[type] || {}, changed = Object.keys(cur).length > 0;
+        return `<tr${changed ? ' class="now"' : ''}><td class="l"><b>${esc(d.name)}</b><small class="muted">${changed ? '<b class="okc">changed</b> · ' : ''}$${d.cost.toLocaleString()} normally</small></td>`
+            + TW_FIELDS.map(fd => `<td>${has[fd.k] ? `<input type="number" data-tw="${type}" data-f="${fd.k}" value="${cur[fd.k] || 100}" min="${fd.lo}" max="${fd.hi}" step="5" class="${twClass(fd.k, cur[fd.k] || 100)}">` : '<span class="muted">—</span>'}</td>`).join('')
+            + `<td><button class="btn small" data-act="master-twdef" data-tw="${type}" title="Put this tower back to normal">Default</button></td></tr>`;
+    };
+    const cfg = adminData().tw;
+    openModal('master', `<div class="cardhead"><h2>Tower setup</h2><button class="iconbtn x" data-act="master-back"><img src="assets/ui/close.svg" alt="Close"></button></div>
+    <p class="muted small" style="margin:0 0 8px"><b>100%</b> is normal. Above 100% buffs (more damage, faster attacks, more range, pierce or income), below nerfs.
+      For <b>Place cost</b> and <b>Upgrade cost</b>, above 100% makes the tower more expensive. Every PC on the shared folder gets these; games in progress pick them up too.${cfg ? ' Last saved ' + agoShort(cfg.at) + '.' : ''}</p>
+    ${Share.connected() ? '' : '<div class="warnline">The shared folder isn\'t connected: this setup is only kept on this PC.</div>'}
+    ${msg ? `<div class="mmsg">${esc(msg)}</div>` : ''}<div class="err" id="twErr">${err ? esc(err) : ''}</div>
+    <div class="histwrap"><table class="wbtable wbsetup twsetup"><thead><tr><th class="l">Tower</th>${TW_FIELDS.map(fd => `<th>${fd.name} %</th>`).join('')}<th></th></tr></thead>
+    <tbody>${Object.keys(TD).map(row).join('')}</tbody></table></div>
+    <div class="row" style="justify-content:space-between"><button class="btn danger" data-act="master-twreset">Reset all to normal</button>
+      <span><button class="btn" data-act="master-back">Back</button> <button class="btn primary" data-act="master-twsave">Save</button></span></div>`, 'wide');
+    document.querySelectorAll('#modal input[data-tw]').forEach((el: any) => el.addEventListener('input', () => { el.className = twClass(el.dataset.f, +el.value || 100); }));
+}
+/** The tower setup form as a config ({ at, towers }), or an error message. `only` puts one tower back to normal. */
+function readMasterTw(only?) {
+    const towers = {};
+    for (const type of Object.keys(TD)) {
+        if (only === type)
+            continue;
+        const x = {};
+        for (const fd of TW_FIELDS) {
+            const el = document.querySelector(`#modal [data-tw="${type}"][data-f="${fd.k}"]`) as any;
+            if (!el)
+                continue;
+            const raw = String(el.value).trim(), v = +raw;
+            if (raw === '' || !isFinite(v) || v < fd.lo || v > fd.hi)
+                return TD[type].name + ': ' + fd.name.toLowerCase() + ' must be ' + fd.lo + '% to ' + fd.hi + '%';
+            x[fd.k] = v;
+        }
+        towers[type] = x;
+    }
+    return { at: Date.now(), towers };
 }
 function masterAction(a, b) {
     if (a === 'master')
@@ -2940,6 +3051,27 @@ function masterAction(a, b) {
     }
     else if (a === 'master-wb')
         renderMasterWb();
+    else if (a === 'master-tw')
+        renderMasterTw();
+    else if (a === 'master-twsave' || a === 'master-twdef' || a === 'master-twreset') {
+        if (a === 'master-twreset' && !b.dataset.armed) {
+            b.dataset.armed = '1';
+            b.textContent = 'Click again to reset every tower';
+            return;
+        }
+        const one = a === 'master-twdef' ? b.dataset.tw : '';
+        const cfg = a === 'master-twreset' ? { at: Date.now(), towers: {} } : readMasterTw(one);
+        if (typeof cfg === 'string') {
+            $('twErr').textContent = cfg;
+            return;
+        }
+        Share.saveAdmin({ master: null, resets: {}, tw: cfg }).then(() => {
+            if (game && game.towers)
+                recalcAll();
+            renderMasterTw(a === 'master-twreset' ? 'Every tower is back to normal.'
+                : one ? TD[one].name + ' is back to normal.' : 'Tower setup saved' + (Share.connected() ? ' for every PC.' : ' on this PC.'));
+        });
+    }
     else if (a === 'master-wbsave' || a === 'master-wbdef' || a === 'master-wbreset') {
         if (a === 'master-wbreset' && !b.dataset.armed) {
             b.dataset.armed = '1';
@@ -3071,7 +3203,7 @@ function frame(now) {
     const raw = Math.min(0.05, (now - last) / 1000);
     last = now;
     if (inGame()) {
-        if (!UI.paused && !game.over && !UI.modal && !UI.bossKey) {
+        if (!UI.paused && !game.over && !UI.modal) {
             for (let i = 0; i < UI.speed; i++) {
                 update(raw);
                 if (game.over)

@@ -573,9 +573,6 @@ ol.steps{margin:0 0 8px;padding-left:20px;line-height:1.7;font-size:14px}
 .pickplayer button{display:flex;align-items:center;gap:6px;padding:3px 10px 3px 3px;border-radius:999px;background:var(--panel2);border:1px solid var(--line2);font-size:13px}
 .pickplayer button:hover{background:#2c3856}
 input.tagin{width:84px!important;letter-spacing:2px}
-#bosskey{position:fixed;inset:0;background:#fff;z-index:100;display:none;align-items:flex-end;justify-content:center;cursor:default}
-#bosskey.on{display:flex}
-#bosskey span{color:#e8e8e8;font-size:11px;padding:8px}
 
 /* ---------- v4.5: Global and Daily Top 10 (medal table) ---------- */
 .boardshead.sub{margin:16px 0 8px}
@@ -693,7 +690,7 @@ input.tagin{width:84px!important;letter-spacing:2px}
 /* Info tabs */
 .infotabs{max-width:320px;margin:4px 0 12px}
 /* World Boss: banner + damage board at the bottom of the leaderboards */
-.wbsection{display:grid;grid-template-columns:1.25fr 1fr;gap:12px;margin-top:16px}
+.wbsection{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px;align-items:stretch}
 .wbbanner{position:relative;overflow:hidden;border-radius:14px;border:2px solid #7b1fa2;background:radial-gradient(circle at 18% 40%,rgba(171,71,188,.45),transparent 60%),linear-gradient(135deg,#2a1240,#18132a);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 .wbhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .wbtag{font-size:12px;font-weight:900;letter-spacing:3px;color:#ffd93d;background:rgba(0,0,0,.35);border:1px solid rgba(255,217,61,.35);border-radius:6px;padding:3px 10px}
@@ -709,7 +706,15 @@ input.tagin{width:84px!important;letter-spacing:2px}
 .wbmeta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:#d7c8e6;margin-bottom:8px}
 .wbmeta b{color:#fff}
 .wbfoot{font-size:11.5px}
-.wbboard .tot{font-variant-numeric:tabular-nums}
+.wbboard{display:flex;flex-direction:column;min-height:0}
+.wbboard .tot{font-variant-numeric:tabular-nums;white-space:nowrap}
+.wbboard .wbrows{flex:1}
+.wbboard .tbsub{margin-top:auto;padding-top:6px}
+.wbmods{display:flex;flex-wrap:wrap;gap:5px;margin:-2px 0 8px}
+.wbmod{font-size:11.5px;font-weight:800;border-radius:999px;padding:2px 9px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.18);color:#fff}
+.wbmod.up{color:#ff8a80;border-color:rgba(255,138,128,.45)}
+.wbmod.down{color:#a5d6a7;border-color:rgba(165,214,167,.45)}
+.wbmod.aura{color:#ce93d8;border-color:rgba(206,147,216,.55)}
 .wbinfo-now{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid #7b1fa2;border-radius:12px;padding:10px 12px;margin-bottom:6px}
 .wbinfo-now b{display:block}
 .wbinfo-now span{font-size:12.5px}
@@ -801,7 +806,9 @@ input.tagin{width:84px!important;letter-spacing:2px}
 @keyframes bdglow{0%,100%{opacity:.15}50%{opacity:.45}}
 .bdbolt{animation:bdbolt 1.2s linear infinite}
 @keyframes bdbolt{0%,40%,100%{opacity:1}20%{opacity:.45}}
-@media (prefers-reduced-motion:reduce){.bdglow,.bdbolt{animation:none}}
+.bdgem{animation:bdgem 2.4s ease-in-out infinite}
+@keyframes bdgem{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.bdglow,.bdbolt,.bdgem{animation:none}}
 .avatar.storm{overflow:visible}
 .cinput input:focus,.cinput input:focus-visible{outline:none;border-color:#4a6fb5}
 /* World Boss Champion greeting (5:01 PM every Friday) */
@@ -1038,3 +1045,35 @@ body.locked #modal{background:radial-gradient(circle at 15% 20%,rgba(77,150,255,
 .cline span{white-space:nowrap}
 .cline + .cmsg.first{margin-top:6px}
 .csent{font-size:11px;color:var(--muted);margin:3px 4px 0}
+/* 5.2.1: the World Boss Champion's name shines: gold with a purple glint sweeping across it */
+.champname{background:linear-gradient(100deg,#ffb300 0%,#ffd54f 30%,#fffde7 42%,#e040fb 50%,#fffde7 58%,#ffd54f 70%,#ffb300 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-weight:900;animation:champshine 2.8s linear infinite;filter:drop-shadow(0 0 4px rgba(255,213,79,.6))}
+@keyframes champshine{from{background-position:120% 0}to{background-position:-120% 0}}
+@media (prefers-reduced-motion:reduce){.champname{animation:none;background-position:50% 0}}
+/* 5.2.1: master control Tower setup */
+.twsetup td.l{min-width:130px}
+.twsetup td.l small{display:block}
+.twsetup input{min-width:70px}
+.twsetup input.twup{border-color:#66bb6a;color:#a5d6a7}
+.twsetup input.twdown{border-color:#ef5350;color:#ff8a80}
+/* 5.2.1: Champion prize on the World Boss banner, and its window */
+.champprize{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:rgba(0,0,0,.28);border:1px solid rgba(255,213,79,.35);border-radius:10px;padding:6px 10px;color:inherit;cursor:pointer;font:inherit}
+.champprize:hover{border-color:#ffd54f;background:rgba(0,0,0,.4)}
+.champprize .cpl{flex-shrink:0;display:flex;flex-direction:column;line-height:1.2}
+.champprize .cpl b{color:#ffd54f;font-size:12.5px}
+.champprize .cpl small{color:#d7c8e6;font-size:10.5px}
+.champprize .cpavs{display:flex;flex-wrap:wrap;gap:2px;min-width:0}
+/* 5.2.1: the Champion border cards (Edit profile picker and the Champion prize window) */
+.champpick{margin:12px 0 4px;padding:10px;border-radius:12px;border:1px solid rgba(206,147,216,.4);background:linear-gradient(180deg,rgba(171,71,188,.16),transparent 70%)}
+.cphead{display:flex;flex-direction:column;margin:0 2px 8px}
+.cphead b{color:#ffd54f;font-size:14px}
+.cphead small{color:var(--muted);font-size:11.5px}
+.cpgrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:6px 0 4px}
+.cpcard{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;text-align:center;background:var(--panel2);border:2px solid var(--line);border-radius:12px;padding:10px 6px 8px;color:inherit;font:inherit;min-width:0}
+button.cpcard{cursor:pointer;transition:transform .08s,border-color .12s}
+button.cpcard:hover{transform:translateY(-2px);border-color:#ce93d8}
+.cpcard.on{border-color:var(--gold);box-shadow:0 0 12px rgba(255,217,61,.45)}
+.cpcard .cpn{position:absolute;left:8px;top:5px;font-style:normal;font-weight:900;font-size:15px;color:#ffd54f}
+.cpcard b{font-size:13px;margin-top:2px}
+.cpcard small{font-size:10.5px;color:var(--muted);line-height:1.3}
+.cpcard em{font-style:normal;font-size:10.5px;font-weight:800;color:#1a1200;background:var(--gold);border-radius:999px;padding:1px 8px;margin-top:2px}
+@media (max-width:760px){.cpgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}

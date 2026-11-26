@@ -293,7 +293,9 @@ test('World Boss tiers: rounds 40, 60, 80, 100, 120 with 10k-50k HP; skulls; a t
   E.damageBalloon(w.ref, 1e9, 'sharp', null);
   assert.ok(g.won && w.killed && g.over, 'all five popped: a win');
   const h = E.store.get('wbHist', {})['46n'];
-  assert.deepStrictEqual([h.won, h.tiers, h.elite, h.d], [true, 5, false, 10000 + 20000 + 30000 + 40000 + 50000 + g.lives * 10], 'Thursday: kept as a Normal run');
+  assert.deepStrictEqual([h.won, h.tiers, h.elite], [true, 5, false], 'Thursday: kept as a Normal run');
+  assert.strictEqual(h.d, Math.round(w.damage) + g.lives * 10, 'score: all damage dealt, plus 10 per life left');
+  assert.ok(w.damage > 1e9, 'no cap: every hit counts in full, past the boss health too');
   assert.strictEqual(E.wbBoard(46, undefined, false)[0].h.won, true);
   assert.strictEqual(E.wbBoard(46, undefined, true).length, 0, 'not on the Elite board');
 });
@@ -424,10 +426,10 @@ test('World Boss Champion: only gold of an announced event wears the Legend bord
   const test = { key: 'k-t', id: { name: 'Test', uid: 'test000001', tag: '3' }, wbHist: { 44: { d: 9e6, at: E.wbStartsAt(44) + 1 }, 45: { d: 9e6, at: E.wbStartsAt(44) + 864e5 } }, me: false };
   const players = [E.localPlayers()[0], other, late, test];
   assert.strictEqual(E.refreshWbChamp(players, end + 30e3), '', 'before 5:01 PM nobody wears it (and the test scores never did)');
-  assert.ok(!E.avatarSVG({ uid: me.uid, animal: 'fox', border: 'plain' }).includes('bdbolt'));
+  assert.ok(!E.avatarSVG({ uid: me.uid, animal: 'fox', border: 'plain' }).includes('bdgem'));
   assert.strictEqual(E.refreshWbChamp(players, end + 60e3), me.uid, '5:01 PM: the champion');
-  assert.ok(E.avatarSVG({ uid: me.uid, animal: 'fox', border: 'plain' }).includes('bdbolt'), 'the Legend border (fangs and lightning)');
-  assert.ok(!E.avatarSVG({ uid: 'silv000001', animal: 'fox', border: 'wblegend' }).includes('bdbolt'), 'nobody else, even if their save asks for it');
+  assert.ok(E.avatarSVG({ uid: me.uid, animal: 'fox', border: 'plain' }).includes('bdgem'), 'the Legend border (Boss Slayer: gold ring and gems)');
+  assert.ok(!E.avatarSVG({ uid: 'silv000001', animal: 'fox', border: 'wblegend' }).includes('bdgem'), 'nobody else, even if their save asks for it');
   assert.deepStrictEqual(Array.from(E.wbBoard(46, players), x => x.p.id.name), ['Gold', 'Silv'], 'a score set after 5:00 PM does not count');
   const c = E.wbChamp(players, end + 60e3);
   assert.deepStrictEqual([c.k, c.d, c.p.id.name], [46, 5000, 'Gold']);

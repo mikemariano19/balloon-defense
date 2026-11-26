@@ -424,9 +424,12 @@ function clearScenery(id) {
 }
 /* ---------- Game state ---------- */
 let game = null, nextId = 1;
-function price(c, type) {
+/** What a tower (or, with `up`, one of its upgrades) costs in this game: difficulty, Cost skill and master control's
+    tower setup (twMul). */
+function price(c, type, up = false) {
     const g = game, n = type && g && g.perks && g.perks[type] ? g.perks[type].cost || 0 : 0;
-    return Math.round(c * g.diff.costMul * (1 - 0.02 * n) / 5) * 5;
+    const m = type ? twMul(type, up ? 'up' : 'cost') : 1;
+    return Math.round(c * m * (g ? g.diff.costMul : 1) * (1 - 0.02 * n) / 5) * 5;
 }
 function hpMultFor(r) { return r <= 80 ? 1 : r <= LAST_ROUND ? 1 + (r - 80) * 0.02 : 1.4 + (r - LAST_ROUND) * 0.06; }
 function createGame(cfg, snap) {
@@ -633,7 +636,9 @@ function makeBalloon(type, dist, o = {}) {
     b.a = p.a;
     return b;
 }
-function popCash() { return (game.round > 50 ? 0.5 : 1) * game.popMult * (game.mode === 'halfcash' ? 0.5 : 1); }
+function popCash() { return (game.round > 50 ? 0.5 : 1) * game.popMult * (game.mode === 'halfcash' ? 0.5 : 1) * wbGold(); }
+/** World Boss gold gain modifier (1 outside the World Boss). */
+function wbGold() { return game.wb ? Math.max(0, 1 + (+game.wb.boss.gold || 0) / 100) : 1; }
 function toughness(b) { return BT[b.type].boss ? 1e9 + b.hp : Math.ceil(b.hp) + BT[b.type].kids.reduce((s, k) => s + RBE[k], 0); }
 /** Apply damage. Returns -1 when immune, 1 when damage was applied, 0 otherwise. */
 function damageBalloon(b, dmg, dtype, src, bm) {
@@ -657,18 +662,22 @@ function damageBalloon(b, dmg, dtype, src, bm) {
             }
             return 1;
         }
-        // its defense cuts the damage; every point dealt is score. Hits close together show as one number.
+        // its defense cuts the damage; every point of every hit is score, with no cap (the last hit counts in full,
+        // even past its health). Hits close together show as one number.
         dmg *= game.wb.boss.def;
-        const dealt = Math.min(dmg, b.hp);
-        game.wb.damage += dealt;
-        b.numAcc = (b.numAcc || 0) + dealt;
+        game.wb.damage += dmg;
+        b.numAcc = (b.numAcc || 0) + dmg;
         if (b.numT <= 0 && b.numAcc >= 1) {
             addFx({ k: 'num', big: true, x: b.x + (Math.random() - .5) * d.r, y: b.y - d.r * (0.2 + Math.random() * 0.4), txt: '-' + Math.round(b.numAcc).toLocaleString(), life: .9 });
             b.numAcc = 0;
             b.numT = .25;
         }
     }
-    else if (b.maxHp >= 10 && dmg >= 2 && b.numT <= 0) {
+    else if (game.wb && game.wb.boss.aura > 0 && game.wb.ref && !game.wb.ref.dead && Math.hypot(b.x - game.wb.ref.x, b.y - game.wb.ref.y) <= WB_AURA_R)
+        dmg *= Math.max(0, 1 - game.wb.boss.aura / 100); // the boss's aura shields the balloons near it
+    if (!d.wb && game.wb)
+        game.wb.damage += Math.min(dmg, b.hp); // World Boss: damage to its balloons counts too (layer by layer, as they pop)
+    if (!d.wb && b.maxHp >= 10 && dmg >= 2 && b.numT <= 0) {
         addFx({ k: 'num', x: b.x + (Math.random() - .5) * 16, y: b.y - BT[b.type].r, txt: '-' + Math.round(Math.min(dmg, b.hp)), life: .7 });
         b.numT = .12;
     }
@@ -883,9 +892,10 @@ function wbTick(dt) {
 function wbMobOpts(i) { const t = game.wb.t; return { pi: 0, kid: true, fort: t >= 480, camo: t >= 720 && i % 3 === 2 }; }
 /** The boss stops (WB_CAST_TIME) and drops balloons right behind itself, on its own road. They get stronger over time. */
 function wbSummon(b, type = wbMob(game.wb.t), count = game.wb.boss.count) {
+    count = Math.max(1, Math.round(count * (1 + (+game.wb.boss.swarm || 0) / 100)));
     const g = game, hm = g.hpMult;
     b.castT = WB_CAST_TIME;
-    g.hpMult = Math.max(hm, wbStrength(g.wb.t));
+    g.hpMult = Math.max(hm, wbStrength(g.wb.t)) * Math.max(0.1, 1 + (+g.wb.boss.str || 0) / 100);
     for (let i = 0; i < count; i++)
         g.balloons.push(makeBalloon(type, Math.max(0, b.dist - BT[b.type].r * 0.4 - i * 16), Object.assign(wbMobOpts(i), { pi: b.pi })));
     g.hpMult = hm;
@@ -893,7 +903,7 @@ function wbSummon(b, type = wbMob(game.wb.t), count = game.wb.boss.count) {
 }
 /** The end of every round: the round bonus, Gold Mine income and lives, player XP and tower XP. */
 function wbPayday() {
-    const g = game, bonus = roundBonus(g.round);
+    const g = game, bonus = Math.round(roundBonus(g.round) * wbGold());
     let income = bonus, lives = 0;
     g.cash += bonus;
     for (const t of g.towers) {
@@ -901,6 +911,7 @@ function wbPayday() {
             let inc = t.s.income;
             if (t.s.vault)
                 inc += Math.min(t.s.vaultCap || 1000, Math.floor(g.cash * t.s.vault));
+            inc = Math.round(inc * wbGold());
             income += inc;
             g.cash += inc;
             addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + inc, col: '#ffd93d', life: 1.5 });
@@ -1157,6 +1168,22 @@ function statsFor(type, lv, perks) {
         if (perks.rally)
             s.rallyT = 0.5 * perks.rally;
     }
+    // master control's tower setup (5.2.1): percent of normal for this tower type
+    if (TW_CFG[type]) {
+        const m = (k) => twMul(type, k);
+        if (s.dmg)
+            s.dmg *= m('dmg');
+        if (s.rate)
+            s.rate /= m('rate');
+        if (s.range && s.range < 2000)
+            s.range = Math.round(s.range * m('range'));
+        if (s.aura)
+            s.aura = Math.round(s.aura * m('range'));
+        if (s.pierce)
+            s.pierce = Math.max(1, Math.round(s.pierce * m('pierce')));
+        if (s.income > 0)
+            s.income = Math.round(s.income * m('income'));
+    }
     return s;
 }
 /** Recompute every tower's stats, including Signal Tower aura buffs (the strongest buff of each kind applies). */
@@ -1276,7 +1303,7 @@ function canUp(t, p) {
         return 'xp';
     return 'ok';
 }
-function upgradeCost(t, p) { return price(TD[t.type].paths[p][t.lv[p]].c, t.type); }
+function upgradeCost(t, p) { return price(TD[t.type].paths[p][t.lv[p]].c, t.type, true); }
 function upgrade(t, p) {
     if (!t || canUp(t, p) !== 'ok')
         return false;

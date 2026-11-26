@@ -95,6 +95,7 @@ function wbChamp(players = allPlayers(), now = wbNow()) {
 function refreshWbChamp(players = allPlayers(), now = wbNow()) {
     const c = wbChamp(players, now);
     WB_CHAMP_UID = c ? c.p.id.uid || '' : '';
+    WB_CHAMP_CB = champBorderId(c && c.p.id.cb);
     return WB_CHAMP_UID;
 }
 /** "2d 4h", "3h 12m", "12m 05s": time left until `t`. */
@@ -120,7 +121,7 @@ function wbNotes(players = allPlayers(), now = wbNow()) {
         if (mine && mine.rank <= 3)
             out.push({ id: 'wbmedal-' + c, kind: 'medal', at: wbEndsAt(c) + WB_ANNOUNCE_MS + 1, av: avatarOf(me.id),
                 text: 'You won ' + ['gold', 'silver', 'bronze'][mine.rank - 1] + ' (' + tag + ') against ' + p0.boss.name + '!',
-                sub: mine.rank === 1 ? 'You are the World Boss Champion and wear the Legend border for 7 days.' : wbResultTxt(mine) });
+                sub: mine.rank === 1 ? 'You are the World Boss Champion! 10 Champion borders are yours for 7 days: pick one in Edit profile.' : wbResultTxt(mine) });
     }
     return out;
 }

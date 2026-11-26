@@ -506,6 +506,21 @@ function drawWorldBoss(c, b, d, time) {
     c.ellipse(b.x + 14, b.y + R * .95, R * .75, R * .22, 0, 0, TAU);
     c.fill();
     c.restore();
+    if (game && game.wb && game.wb.boss.aura > 0) { // the DEF aura: balloons inside it take less damage
+        c.save();
+        c.globalAlpha = .1 + .04 * Math.sin(time * 2);
+        c.fillStyle = '#ce93d8';
+        c.beginPath();
+        c.arc(b.x, b.y, WB_AURA_R, 0, TAU);
+        c.fill();
+        c.globalAlpha = .35;
+        c.strokeStyle = '#ce93d8';
+        c.lineWidth = 2;
+        c.setLineDash([8, 8]);
+        c.lineDashOffset = -time * 20;
+        c.stroke();
+        c.restore();
+    }
     drawWbAura(c, b.x, y, R, tier, elite, time, game && game.wb && game.wb.angry);
     c.save();
     c.globalAlpha = .88;

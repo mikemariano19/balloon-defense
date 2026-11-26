@@ -1,7 +1,7 @@
 "use strict";
 /* Balloon Defense — game data: maps, modes, difficulties, balloons, towers, rounds, titles, avatars.
    Edit these tables to rebalance the game; no other file needs to change. */
-const VERSION = '5.2';
+const VERSION = '5.2.1';
 const W = 960, H = 600, TAU = Math.PI * 2;
 /* ---------- Tile grid (40 x 25 tiles of 24 px) ---------- */
 const TILE = 24, COLS = W / TILE, ROWS = H / TILE;
@@ -214,9 +214,21 @@ const BORDERS = [
     { id: 'perfect', name: 'Flawless', how: '12 perfect clears (0 lives lost)', col: '#ffffff', w: 5, glow: '#80deea' },
     { id: 'streak', name: 'Daily Flame', how: '30-day daily challenge streak', col: '#ff7043', w: 6, dots: '#ffd54f' },
     { id: 'medalist', name: 'Medalist', how: 'Hold 10 gold medals (1st place on 10 stage boards)', col: '#ffd54f', w: 6, rivets: '#fff8e1' },
-    // special: worn automatically by the World Boss Champion (announced Friday 5:01 PM), never picked by hand or kept in a save
-    { id: 'wblegend', name: 'World Boss Legend', how: 'Be the World Boss Champion: #1 on the Friday World Boss board (worn for 7 days)', col: '#1b1b1b', w: 8, storm: true, special: true } // Obsidian Fangs with lightning: drawn by stormBorder (profile.ts)
+    // 5.2.1 champion borders: only the World Boss Champion can wear one, for the 7 days after Friday 5:01 PM. They pick
+    // which in Edit profile (id.cb, default Boss Slayer); it is never their saved border. Drawn by stormBorder (profile.ts).
+    ...[['wblegend', 'Boss Slayer', 'Gold ring, purple flames, gems, shield and swords'],
+        ['wbinferno', 'Inferno', 'Black and gold ring wrapped in roaring orange flames'],
+        ['wbfrost', 'Frost Titan', 'Ice crystal spikes, silver-blue ring and a snowflake'],
+        ['wblaurel', 'Royal Laurel', 'Gold laurel wreath, red ribbon and a gold star'],
+        ['wbdragon', 'Dragon', 'Emerald scale ring, two horns and a dragon eye'],
+        ['wbgalaxy', 'Galaxy', 'Deep-space ring with orbiting planets and twinkling stars'],
+        ['wbthunder', 'Thunder God', 'Electric blue ring with flashing gold lightning bolts'],
+        ['wbballoon', 'Balloon Parade', 'Rainbow balloons circling a gold ring'],
+        ['wbshadow', 'Shadow Wings', 'Dark bat wings, black ring and glowing red eyes'],
+        ['wbangel', 'Angel Halo', 'White feather wings, pearl ring and a golden halo']]
+        .map(([id, name, desc]) => ({ id, name, desc, how: 'World Boss Champion only (worn for 7 days from Friday 5:01 PM)', col: '#ffc107', w: 8, storm: true, special: true, champ: true }))
 ];
+const CHAMP_BORDER_IDS = BORDERS.filter(b => b.champ).map(b => b.id);
 const NAME_FILTER = ['fuck', 'shit', 'bitch', 'cunt', 'nigg', 'fag', 'dick', 'cock', 'pussy', 'whore', 'slut', 'rape', 'nazi', 'hitler', 'gago', 'ulol', 'kupal', 'pekpek', 'putangina'];
 /* ---------- Balloons ---------- */
 const BASE_SPEED = 62; // px per second for Red
@@ -503,6 +515,14 @@ const SHOP = ['dart', 'tack', 'bomb', 'sniper', 'frost', 'signal', 'tesla', 'boa
 const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 /** Release notes, newest first (the News panel on the home page). */
 const NEWS = [
+    { v: '5.2.1', date: '2026-11-27', items: [
+            'World Boss Champion: 10 exclusive Champion borders (Boss Slayer, Inferno, Frost Titan, Royal Laurel, Dragon, Galaxy, Thunder God, Balloon Parade, Shadow Wings, Angel Halo). The Champion picks one in Edit profile and can switch any time for 7 days; it shows on their avatar everywhere.',
+            'World Boss Champion: their name shines in gold everywhere. The World Boss banner shows the Champion prize, and the champion greeting has a Choose my border button.',
+            'World Boss leaderboard: Top 5, with Result, Time, Lives and Damage columns in ranking order. Damage is a short number (18.9m).',
+            'World Boss: bosses can have modifiers (Swarm, Strength, Gold gain, Boss aura DEF), shown on the banner.',
+            'Upgrade path hotkeys are now A, S and D. The ` key no longer hides the game.',
+            'Master control: Tower setup, to buff or nerf any tower (cost, upgrade cost, damage, attack speed, range, pierce, income), shared with every PC.'
+        ] },
     { v: '5.2', date: '2026-11-26', items: [
             'World Boss: two days a week. Normal on Thursday, Elite on Friday (2.5x HP, 15% faster, one more skull per tier), both 7:30 AM to 5:00 PM (PH time). The leaderboard has an Elite tab and a Normal tab, and the Champion is Elite #1.',
             'World Boss: played in rounds. Five boss tiers come on rounds 40, 60, 80, 100 and 120 (10,000 to 50,000 HP), and rounds keep going while a boss is out, so farms keep paying. A tier only comes once the one before it is popped. Pop all five before round 140 to win.',
@@ -577,7 +597,15 @@ const WB_BOSSES = [
     { id: 'wbbastion', name: 'Bastion', build: 'Slow, high defense', speed: 'Slow', def: 0.6, defTxt: 'High (takes 40% less damage)', count: 3, every: 1, summonTxt: '3 balloons each summon', cash: 10000, skill: 'shield' },
     { id: 'wbbrood', name: 'Broodmother', build: 'Slow, medium defense, large summons', speed: 'Slow', def: 0.8, defTxt: 'Medium (takes 20% less damage)', count: 4, every: 1, summonTxt: '4 balloons each summon', cash: 10000, skill: 'brood' },
     { id: 'wbswarm', name: 'Swarm King', build: 'Fast, normal defense, fast summoning', speed: 'Fast', def: 1, defTxt: 'Normal', count: 3, every: 0.6, summonTxt: '3 balloons, 40% more often', cash: 10000, skill: 'swarm' }
-].map(b => Object.assign(b, { hp: WB_HP, lives: WB_LIVES }));
+].map(b => Object.assign(b, { hp: WB_HP, lives: WB_LIVES, swarm: 0, str: 0, gold: 0, aura: 0 }));
+/** 5.2.1: boss modifiers, in percent (master control): swarm = balloons per summon, str = summoned balloons' health,
+    gold = cash from pops and paydays, aura = balloons near the boss (within WB_AURA_R) take this much less damage. */
+const WB_MODS = [
+    { k: 'swarm', name: 'Swarm', harder: 1 }, { k: 'str', name: 'Strength', harder: 1 }, { k: 'gold', name: 'Gold gain', harder: -1 }, { k: 'aura', name: 'Boss aura DEF', harder: 1 }
+];
+const WB_AURA_R = 160;
+/** The boss's modifiers that aren't 0: [{ k, name, v, harder }]. */
+function wbModsOf(b) { return WB_MODS.filter(m => +b[m.k]).map(m => Object.assign({ v: +b[m.k] }, m)); }
 /** 5.1.1: the builds as shipped. Master control can change a boss's name, HP, defense, start money, lives and summon
     size (applyWbConfig, profile.ts); "Reset to default" goes back to these. */
 const WB_DEFAULTS = WB_BOSSES.map(b => Object.assign({}, b));

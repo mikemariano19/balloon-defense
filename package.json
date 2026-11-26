@@ -1,6 +1,6 @@
 {
   "name": "balloon-defense",
-  "version": "5.2.0",
+  "version": "5.2.1",
   "private": true,
   "description": "Balloon Defense: an offline browser tower defense game.",
   "scripts": {

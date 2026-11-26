@@ -115,12 +115,12 @@ function cleanAdmin(o) {
     for (const [k, v] of Object.entries(obj(o.resets)))
         if (/^[a-z0-9]{6,20}$/.test(k) && +v > 0)
             resets[k] = +v;
-    return { master: typeof m.h === 'string' && typeof m.s === 'string' ? { s: m.s, h: m.h, at: +m.at || 0 } : null, resets, wb: cleanWbConfig(o.wb) };
+    return { master: typeof m.h === 'string' && typeof m.s === 'string' ? { s: m.s, h: m.h, at: +m.at || 0 } : null, resets, wb: cleanWbConfig(o.wb), tw: cleanTwConfig(o.tw) };
 }
 /* ---------- World Boss builds from master control (5.1.1) ----------
    { at, bosses: { wbgale: { name, hp, def, cash, lives, count }, ... } }: only the fields that differ from WB_DEFAULTS.
    Kept with the master control data, so every PC on the shared folder fights the same boss. The newest save wins. */
-const WB_LIMITS = { hp: [1000, 10000000], def: [0.1, 3], cash: [0, 1000000], lives: [1, 100000], count: [1, 10] };
+const WB_LIMITS = { hp: [1000, 10000000], def: [0.1, 3], cash: [0, 1000000], lives: [1, 100000], count: [1, 10], swarm: [-90, 300], str: [-90, 500], gold: [-90, 500], aura: [0, 90] };
 function cleanWbConfig(o) {
     if (!o || typeof o !== 'object' || Array.isArray(o) || !(+o.at > 0))
         return null;
@@ -166,6 +166,41 @@ function applyWbConfig(cfg = adminData().wb) {
             BT[d.id].name = b.name;
     });
 }
+/* ---------- Tower setup from master control (5.2.1) ----------
+   { at, towers: { dart: { cost: 120, dmg: 80, ... }, ... } }: percent of normal (100 = no change), only the fields that
+   differ. Kept with the master control data, so every PC on the shared folder plays the same towers. The newest save wins. */
+const TW_FIELDS = [
+    { k: 'cost', name: 'Place cost', lo: 10, hi: 1000 }, { k: 'up', name: 'Upgrade cost', lo: 10, hi: 1000 },
+    { k: 'dmg', name: 'Damage', lo: 10, hi: 1000 }, { k: 'rate', name: 'Attack speed', lo: 10, hi: 1000 },
+    { k: 'range', name: 'Range', lo: 25, hi: 300 }, { k: 'pierce', name: 'Pierce', lo: 10, hi: 1000 }, { k: 'income', name: 'Income', lo: 10, hi: 1000 }
+];
+function cleanTwConfig(o) {
+    if (!o || typeof o !== 'object' || Array.isArray(o) || !(+o.at > 0))
+        return null;
+    const towers = {};
+    for (const type of Object.keys(TD)) {
+        const x = o.towers && o.towers[type];
+        if (!x || typeof x !== 'object')
+            continue;
+        const t = {};
+        for (const fd of TW_FIELDS) {
+            const v = +x[fd.k];
+            if (x[fd.k] === undefined || x[fd.k] === null || x[fd.k] === '' || !isFinite(v))
+                continue;
+            const c = Math.round(Math.max(fd.lo, Math.min(fd.hi, v)));
+            if (c !== 100)
+                t[fd.k] = c;
+        }
+        if (Object.keys(t).length)
+            towers[type] = t;
+    }
+    return { at: +o.at, towers };
+}
+/** The tower setup in use: { dart: { cost: 120, ... } } (empty = every tower as shipped). */
+let TW_CFG = {};
+function applyTwConfig(cfg = adminData().tw) { TW_CFG = (cfg && cfg.towers) || {}; }
+/** A tower's setting as a multiplier: twMul('dart', 'dmg') = 1.2 for 120%. */
+function twMul(type, k) { const t = TW_CFG[type]; return t && t[k] ? t[k] / 100 : 1; }
 function adminData() {
     try {
         return cleanAdmin(JSON.parse(localStorage.getItem(ADMIN_KEY) || 'null'));
@@ -180,6 +215,7 @@ function saveAdminData(o) {
     }
     catch (e) { }
     applyWbConfig();
+    applyTwConfig();
 }
 /** Two copies of the master control data merged: the newer master password, and the latest reset of each profile. */
 function mergeAdmin(a, b) {
@@ -190,7 +226,8 @@ function mergeAdmin(a, b) {
         resets[k] = Math.max(+resets[k] || 0, +v);
     const master = !a.master ? b.master : !b.master ? a.master : (b.master.at > a.master.at ? b.master : a.master);
     const wb = !a.wb ? b.wb : !b.wb ? a.wb : (b.wb.at > a.wb.at ? b.wb : a.wb);
-    return { master, resets, wb };
+    const tw = !a.tw ? b.tw : !b.tw ? a.tw : (b.tw.at > a.tw.at ? b.tw : a.tw);
+    return { master, resets, wb, tw };
 }
 function resetAt(uid) { return +adminData().resets[uid] || 0; }
 /** True when this profile has a password that still counts (set after the last reset from master control). */
@@ -867,6 +904,10 @@ function refreshCrown(players = allPlayers()) { const top = globalBoard(players)
 function globalRankOf(uid, players = allPlayers()) { const x = globalBoard(players).find(r => r.p.id.uid === uid); return x && x.rank <= GLOBAL_SIZE ? x.rank : 0; }
 /** The World Boss Champion (gold of the last announced event) wears the World Boss Legend border on every avatar ('' = nobody). */
 let WB_CHAMP_UID = '';
+/** The champion border the champion picked (their id.cb), or 'wblegend'. */
+let WB_CHAMP_CB = 'wblegend';
+/** A champion border id, or 'wblegend' for anything else. */
+function champBorderId(id) { return CHAMP_BORDER_IDS.includes(id) ? id : 'wblegend'; }
 /* Rank arrows: this PC remembers the last two different orders of each board. A row shows how far that player
    moved between them (+ = up), or 'new' when they weren't on the board before. */
 const RANKS_KEY = 'balloonDefense.ranks';
@@ -1033,7 +1074,9 @@ function isIdle(uid, now = Date.now()) {
 }
 function avatarSVG(o, size = 64) {
     const u = 'av' + (++SVG_UID), A = ANIMALS.find(a => a.id === o.animal) || ANIMALS[0], bg = AVATAR_BGS.find(b => b.id === o.bg) || AVATAR_BGS[0];
-    const own = borderById(o.border), bd = o.uid && o.uid === WB_CHAMP_UID ? borderById('wblegend') : own.special ? BORDERS[0] : own, fem = o.style === 'f', fur = A.fur, inner = A.inner, earC = A.earCol || fur;
+    // the champion wears their pick of the champion borders (o.cb in a preview, else WB_CHAMP_CB); nobody else can.
+    // o.champ draws a champion border on its own (the picker in Edit profile).
+    const own = borderById(o.border), champ = !!(o.uid && o.uid === WB_CHAMP_UID), bd = champ ? borderById(champBorderId(o.cb || WB_CHAMP_CB)) : own.special ? (o.champ ? own : BORDERS[0]) : own, fem = o.style === 'f', fur = A.fur, inner = A.inner, earC = A.earCol || fur;
     const dark = '#263238';
     let ears = '', head = '', face = '', top = '';
     switch (A.ear) {
@@ -1132,31 +1175,130 @@ function avatarSVG(o, size = 64) {
     if (bd.animated) // the ring and its spikes turn smoothly round the avatar (css .bdspin); the face stays still
         bx = `<g class="bdspin">${bx}</g>`;
     if (bd.storm)
-        bx = stormBorder();
+        bx = stormBorder(u, bd.id);
     const vb = bd.storm ? '-14 -14 128 128' : bd.spikes ? '-6 -6 112 112' : '0 0 100 100';
     const crown = o.uid && o.uid === CROWN_UID ? CROWN_SVG : '', idle = isIdle(o.uid);
     return `<svg class="avatar${crown ? ' crowned' : ''}${bd.storm ? ' storm' : ''}" xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${vb}" role="img" aria-label="${idle ? 'Idle' : A.name} avatar${crown ? ', Global #1' : ''}">${bgx}<g clip-path="url(#${u}c)">${idle
         ? `<image href="${IDLE_IMG}" x="5" y="5" width="90" height="90" preserveAspectRatio="xMidYMid slice"/>`
         : ears + head + face + eyes + nose + top}</g>${bx}${crown}</svg>`;
 }
-/** The World Boss Legend border: a black ring with blood-red fangs and a pulsing red glow, and lightning bolts between
-    the fangs that flash. Fangs and bolts turn slowly round the avatar; the face stays still (css .bdspin, .bdglow, .bdbolt). */
-function stormBorder() {
-    const f = (n) => n.toFixed(1), p = (r, a) => f(50 + Math.cos(a) * r) + ',' + f(50 + Math.sin(a) * r), top = -Math.PI / 2;
-    let fangs = '', bolts = '';
-    for (let i = 0; i < 12; i++) {
-        const a = top + i / 12 * TAU;
-        fangs += `<polygon points="${p(48, a - .14)} ${p(58, a)} ${p(48, a + .14)}" fill="#212121" stroke="#ff1744" stroke-width="1.2"/>`;
+/* ---------- World Boss Champion borders (5.2.1) ----------
+   Ten borders only the World Boss Champion can wear, for the 7 days after Friday 5:01 PM. The champion picks one in
+   Edit profile (id.cb) and it shows on their avatar everywhere. The top of each is kept low enough for the Global #1
+   crown. `u` keeps the gradient ids unique per avatar. Animations: css .bdspin, .bdglow, .bdgem, .bdbolt. */
+const CB_F = (n) => n.toFixed(1), CB_TOP = -Math.PI / 2;
+const cbX = (r, a) => 50 + Math.cos(a) * r, cbY = (r, a) => 50 + Math.sin(a) * r;
+const cbRing = (r, col, w, extra = '') => `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${col}" stroke-width="${w}" ${extra}/>`;
+/** n copies of fn(i) round a circle of radius r, each turned to point outwards. */
+function cbAround(n, r, fn, off = 0) {
+    let s = '';
+    for (let i = 0; i < n; i++) {
+        const a = CB_TOP + (i + off) / n * TAU;
+        s += `<g transform="translate(${CB_F(cbX(r, a))} ${CB_F(cbY(r, a))}) rotate(${CB_F(a * 180 / Math.PI + 90)})">${fn(i)}</g>`;
     }
-    for (let i = 0; i < 6; i++) {
-        const a = top + (i * 2 + 1) / 12 * TAU, deg = a * 180 / Math.PI + 90;
-        bolts += `<g transform="translate(${f(50 + Math.cos(a) * 56)} ${f(50 + Math.sin(a) * 56)}) rotate(${f(deg)}) scale(1.5)"><path class="bdbolt" style="animation-duration:${(1 + i * .23).toFixed(2)}s" d="M1.5 -10 L-4.5 0 L0 0 L-2.5 9 L5.5 -2.5 L1 -2.5 Z" fill="#fff59d" stroke="#ffab00" stroke-width="1"/></g>`;
-    }
-    // fangs under the ring, bolts on top of it (both turn together, so they stay in step)
-    return `<circle class="bdglow" cx="50" cy="50" r="47" fill="none" stroke="#ff1744" stroke-width="13" opacity=".3"/><g class="bdspin slow">${fangs}</g>`
-        + `<circle cx="50" cy="50" r="46" fill="none" stroke="#1b1b1b" stroke-width="8"/><circle cx="50" cy="50" r="43" fill="none" stroke="#d50000" stroke-width="1.5"/>`
-        + `<g class="bdspin slow">${bolts}</g>`;
+    return s;
 }
+const cbMirror = (s) => s + `<g transform="translate(100 0) scale(-1 1)">${s}</g>`;
+const cbGrad = (id, stops) => `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1">${stops.map((c, i) => `<stop offset="${i / (stops.length - 1)}" stop-color="${c}"/>`).join('')}</linearGradient>`;
+function cbStar(r, col) {
+    const p = [];
+    for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? r * .42 : r;
+        p.push(CB_F(Math.cos(a) * rr) + ',' + CB_F(Math.sin(a) * rr));
+    }
+    return `<polygon points="${p.join(' ')}" fill="${col}"/>`;
+}
+const cbGem = (x, y, col, d) => `<g transform="translate(${CB_F(x)} ${CB_F(y)})"><path d="M0 -6.5 L5 0 L0 6.5 L-5 0Z" fill="#ffca28" stroke="#6d4c00" stroke-width="1"/><path class="bdgem" style="animation-delay:${d}s" d="M0 -4.2 L3.2 0 L0 4.2 L-3.2 0Z" fill="${col}"/><path d="M-1.2 -2.6 L0 -3.6 L1 -2.2Z" fill="#fff" opacity=".9"/></g>`;
+const cbGems = (col) => [45, 135, 225, 315].map((d, i) => cbGem(cbX(46, d * Math.PI / 180), cbY(46, d * Math.PI / 180), col, i * .5)).join('');
+const CB_BOLT = 'M1.5 -10 L-4.5 0 L0 0 L-2.5 9 L5.5 -2.5 L1 -2.5 Z';
+const CHAMP_BORDERS = {
+    // Boss Slayer: gold ring, purple flames, gems, a purple shield with a gold star on two crossed swords
+    wblegend: (u) => {
+        const flames = cbAround(10, 55, () => `<path d="M0 -9 C4 -3 6 1 4 5 C2 8 -2 8 -4 5 C-6 1 -4 -3 0 -9Z" fill="url(#${u}fl)"/><path d="M0 -3 C2 0 2.5 2 1.5 4 C.5 5.5 -1.5 5.5 -2 4 C-2.5 2 -1.5 0 0 -3Z" fill="#f3e5f5" opacity=".85"/>`, .5);
+        const sword = (r) => `<g transform="rotate(${r}) scale(1.6) translate(0 -3)"><path d="M-1.6 -16 L0 -19.5 L1.6 -16 L1.6 4 L-1.6 4Z" fill="#eceff1" stroke="#455a64" stroke-width=".8"/><rect x="-5" y="4" width="10" height="2.4" rx="1" fill="#ffc107" stroke="#6d4c00" stroke-width=".7"/><rect x="-1.2" y="6.4" width="2.4" height="5" fill="#5d4037"/><circle cy="12.4" r="1.6" fill="#ffc107"/></g>`;
+        return `<defs>${cbGrad(u + 'gd', ['#fff59d', '#ffc107', '#b26a00'])}<linearGradient id="${u}fl" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#e040fb"/><stop offset="1" stop-color="#6a1b9a" stop-opacity=".2"/></linearGradient></defs>`
+            + cbRing(50, '#d500f9', 14, 'class="bdglow" opacity=".3"') + `<g class="bdspin slow">${flames}</g>` + cbRing(46, '#2a0f3d', 9) + cbRing(46, `url(#${u}gd)`, 5.5) + cbRing(42.4, '#aa00ff', 1.3) + cbGems('#d500f9')
+            + `<g transform="translate(50 97)">${sword(-74)}${sword(74)}<path d="M-9 -9 L9 -9 L9 0 C9 6 4 9.5 0 11 C-4 9.5 -9 6 -9 0Z" fill="#6a1b9a" stroke="url(#${u}gd)" stroke-width="2.2"/>${cbStar(5.5, '#ffd54f')}</g>`;
+    },
+    // Inferno: black and gold ring wrapped in turning orange flames
+    wbinferno: (u) => {
+        const fl = (big) => cbAround(14, big ? 54 : 52, () => `<path d="M0 ${big ? -13 : -9} C5 -4 7 1 4.5 6 C2 9 -2 9 -4.5 6 C-7 1 -5 -4 0 ${big ? -13 : -9}Z" fill="url(#${u}f)"/>`, big ? 0 : .5);
+        return `<defs><linearGradient id="${u}f" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffeb3b"/><stop offset=".5" stop-color="#ff6d00"/><stop offset="1" stop-color="#d50000" stop-opacity=".3"/></linearGradient>${cbGrad(u + 'g', ['#ffe082', '#ff8f00', '#6d2c00'])}</defs>`
+            + cbRing(50, '#ff3d00', 16, 'class="bdglow" opacity=".35"') + `<g class="bdspin slow">${fl(true)}</g><g class="bdspin">${fl(false)}</g>` + cbRing(46, '#1a0a00', 9) + cbRing(46, `url(#${u}g)`, 4.5) + cbRing(42.5, '#ff3d00', 1.4)
+            + `<g transform="translate(50 95)"><circle r="9" fill="#1a0a00" stroke="url(#${u}g)" stroke-width="2.4"/><path d="M0 -6 C3 -2 4.5 1 3 4 C1.8 6 -1.8 6 -3 4 C-4.5 1 -3 -2 0 -6Z" fill="#ff6d00"/><path d="M0 -1 C1.2 .5 1.6 2 1 3.2 C.4 4 -.8 4 -1.2 3.2 C-1.6 2 -1 .5 0 -1Z" fill="#ffeb3b"/></g>`;
+    },
+    // Frost Titan: ice crystal spikes, silver-blue ring, a snowflake
+    wbfrost: (u) => {
+        const sp = cbAround(12, 50, i => `<path d="M-3.5 4 L0 ${i % 2 ? -10 : -15} L3.5 4Z" fill="url(#${u}i)" stroke="#e1f5fe" stroke-width=".8"/>`);
+        const flake = `<g transform="translate(50 96)" stroke="#e1f5fe" stroke-width="1.6" stroke-linecap="round">${[0, 60, 120].map(r => `<path transform="rotate(${r})" d="M0 -6 L0 6 M-2 -4 L0 -6 L2 -4 M-2 4 L0 6 L2 4"/>`).join('')}</g>`;
+        return `<defs><linearGradient id="${u}i" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#4fc3f7"/><stop offset="1" stop-color="#e1f5fe"/></linearGradient>${cbGrad(u + 'r', ['#ffffff', '#81d4fa', '#0277bd'])}</defs>`
+            + cbRing(50, '#40c4ff', 14, 'class="bdglow" opacity=".3"') + `<g class="bdspin slow">${sp}</g>` + cbRing(46, '#01304f', 9) + cbRing(46, `url(#${u}r)`, 5) + cbRing(42.5, '#b3e5fc', 1.3) + cbGems('#00e5ff')
+            + `<circle cx="50" cy="96" r="9.5" fill="#01304f" stroke="url(#${u}r)" stroke-width="2.2"/>${flake}`;
+    },
+    // Royal Laurel: gold laurel wreath, red ribbon, gold star
+    wblaurel: (u) => {
+        let leaves = '';
+        for (let i = 0; i < 9; i++) {
+            const a = Math.PI * (0.62 + i * 0.085), x = CB_F(cbX(51, a)), y = CB_F(cbY(51, a));
+            leaves += `<ellipse cx="${x}" cy="${y}" rx="7" ry="3.2" fill="url(#${u}l)" stroke="#7a5600" stroke-width=".7" transform="rotate(${CB_F(a * 180 / Math.PI + 60)} ${x} ${y})"/>`;
+        }
+        return `<defs>${cbGrad(u + 'l', ['#fff59d', '#ffc107', '#a86b00'])}</defs>` + cbRing(50, '#ffd54f', 12, 'class="bdglow" opacity=".3"')
+            + cbMirror(leaves) + cbRing(46, '#3e2a00', 8) + cbRing(46, `url(#${u}l)`, 5) + cbRing(42.6, '#fff8e1', 1)
+            + `<g transform="translate(50 96)"><path d="M-22 -4 L22 -4 L18 2 L22 8 L-22 8 L-18 2Z" fill="#c62828" stroke="#7f0000" stroke-width="1"/><circle r="9" fill="#c62828" stroke="url(#${u}l)" stroke-width="2.4"/>${cbStar(6, '#ffd54f')}</g>`;
+    },
+    // Dragon: emerald scale ring, two horns, a dragon eye
+    wbdragon: (u) => {
+        const scales = cbAround(24, 46, () => `<path d="M-4 -3 Q0 5 4 -3 Q0 0 -4 -3Z" fill="#00e676" opacity=".8"/>`);
+        const horn = `<path d="M14 18 C2 8 -4 -6 4 -14 C4 -2 12 6 22 12Z" fill="url(#${u}h)" stroke="#33691e" stroke-width="1"/>`;
+        return `<defs>${cbGrad(u + 'h', ['#f1f8e9', '#c5e1a5', '#558b2f'])}${cbGrad(u + 's', ['#69f0ae', '#00c853', '#004d26'])}</defs>` + cbRing(50, '#00e676', 14, 'class="bdglow" opacity=".3"')
+            + cbMirror(horn) + cbRing(46, '#00331a', 10) + cbRing(46, `url(#${u}s)`, 6) + `<g class="bdspin slow">${scales}</g>` + cbRing(42.2, '#b9f6ca', 1.2)
+            + `<g transform="translate(50 96)"><ellipse rx="11" ry="8" fill="#00331a" stroke="url(#${u}h)" stroke-width="2.2"/><ellipse rx="7" ry="5.5" fill="#ffd600"/><ellipse class="bdgem" rx="1.8" ry="5" fill="#1b1b1b"/></g>`;
+    },
+    // Galaxy: deep-space ring, orbiting planets and twinkling stars
+    wbgalaxy: (u) => {
+        const stars = cbAround(16, 54, i => cbStar(i % 3 ? 1.8 : 3, i % 2 ? '#fff' : '#b388ff'));
+        const planets = cbAround(3, 55, i => `<circle r="${[4.5, 3.5, 3][i]}" fill="${['#ff80ab', '#40c4ff', '#ffd740'][i]}"/>${i === 0 ? '<ellipse rx="8" ry="2" fill="none" stroke="#fff" stroke-width="1"/>' : ''}`);
+        return `<defs>${cbGrad(u + 'n', ['#7c4dff', '#304ffe', '#00b8d4'])}</defs>` + cbRing(51, '#7c4dff', 16, 'class="bdglow" opacity=".35"')
+            + `<g class="bdspin slow">${stars}</g><g class="bdspin">${planets}</g>` + cbRing(46, '#0d0630', 9) + cbRing(46, `url(#${u}n)`, 4.5) + cbRing(42.5, '#e1bee7', 1)
+            + `<g transform="translate(50 96)"><circle r="9" fill="#0d0630" stroke="url(#${u}n)" stroke-width="2.2"/>${cbStar(6.5, '#fff')}</g>`;
+    },
+    // Thunder God: electric blue ring with flashing gold lightning bolts
+    wbthunder: (u) => {
+        const bolts = cbAround(8, 56, i => `<path class="bdbolt" style="animation-duration:${(1 + i * .2).toFixed(2)}s" transform="scale(1.4)" d="${CB_BOLT}" fill="#fff59d" stroke="#ffab00" stroke-width="1"/>`, .5);
+        return `<defs>${cbGrad(u + 'e', ['#e3f2fd', '#2979ff', '#0d1b4d'])}</defs>` + cbRing(50, '#2979ff', 14, 'class="bdglow" opacity=".35"')
+            + cbRing(46, '#0a1230', 9) + cbRing(46, `url(#${u}e)`, 5) + cbRing(42.4, '#82b1ff', 1.3) + `<g class="bdspin slow">${bolts}</g>` + cbGems('#2979ff')
+            + `<g transform="translate(50 96)"><circle r="9.5" fill="#0a1230" stroke="#ffd600" stroke-width="2.2"/><path transform="scale(.75)" d="${CB_BOLT}" fill="#ffd600"/></g>`;
+    },
+    // Balloon Parade: rainbow balloons circling a gold ring
+    wbballoon: (u) => {
+        const cols = ['#f44336', '#ff9800', '#ffeb3b', '#4caf50', '#2196f3', '#9c27b0'];
+        const bal = cbAround(12, 56, i => `<g transform="rotate(180)"><path d="M0 4 L0 9" stroke="#eee" stroke-width=".8"/><ellipse cy="-1" rx="4.5" ry="5.5" fill="${cols[i % 6]}"/><ellipse cx="-1.5" cy="-3" rx="1.2" ry="2" fill="#fff" opacity=".6"/><path d="M-1.2 4.4 L1.2 4.4 L0 3Z" fill="${cols[i % 6]}"/></g>`);
+        return `<defs>${cbGrad(u + 'g', ['#fff59d', '#ffc107', '#b26a00'])}</defs>` + cbRing(50, '#ffeb3b', 12, 'class="bdglow" opacity=".25"')
+            + `<g class="bdspin slow">${bal}</g>` + cbRing(46, '#3e2a00', 8) + cbRing(46, `url(#${u}g)`, 5) + cbRing(42.6, '#fff', 1.2)
+            + `<g transform="translate(50 96)"><circle r="9" fill="#d32f2f" stroke="url(#${u}g)" stroke-width="2.2"/><path d="M-4 -1 L4 -1 M0 -5 L0 3 M-3 -4 L3 2 M3 -4 L-3 2" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></g>`;
+    },
+    // Shadow Wings: dark bat wings, black ring, glowing red eyes
+    wbshadow: (u) => {
+        const wing = `<path d="M8 40 C-6 30 -14 14 -8 2 C-4 10 0 12 2 12 C-2 6 -1 -2 4 -6 C5 4 8 8 10 9 C9 2 12 -4 16 -6 C15 4 15 14 18 24Z" fill="url(#${u}w)" stroke="#ff1744" stroke-width="1"/>`;
+        return `<defs><linearGradient id="${u}w" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#424242"/><stop offset="1" stop-color="#0a0a0a"/></linearGradient></defs>` + cbRing(50, '#ff1744', 14, 'class="bdglow" opacity=".3"')
+            + cbMirror(wing) + cbRing(46, '#0a0a0a', 9) + cbRing(46, '#2b2b2b', 4) + cbRing(42.5, '#ff1744', 1.4) + cbGems('#ff1744')
+            + `<g transform="translate(50 96)"><path d="M-10 -6 L10 -6 L7 6 L0 10 L-7 6Z" fill="#0a0a0a" stroke="#ff1744" stroke-width="1.6"/><ellipse class="bdgem" cx="-3.5" cy="0" rx="2.4" ry="1.4" fill="#ff1744"/><ellipse class="bdgem" cx="3.5" cy="0" rx="2.4" ry="1.4" fill="#ff1744"/></g>`;
+    },
+    // Angel Halo: white feather wings, pearl ring, golden halo
+    wbangel: (u) => {
+        let feathers = '';
+        for (let i = 0; i < 6; i++) {
+            const x = CB_F(4 - i * 2.6), y = CB_F(46 - i * 7);
+            feathers += `<ellipse cx="${x}" cy="${y}" rx="${CB_F(11 - i * .6)}" ry="4" fill="#fff" stroke="#b0bec5" stroke-width=".8" transform="rotate(${-30 - i * 12} ${x} ${y})"/>`;
+        }
+        return `<defs>${cbGrad(u + 'p', ['#ffffff', '#fff8e1', '#ffe082'])}</defs>` + cbRing(50, '#fff59d', 14, 'class="bdglow" opacity=".35"')
+            + `<ellipse class="bdglow" cx="50" cy="-5" rx="22" ry="5" fill="none" stroke="#ffd54f" stroke-width="3"/>` + cbMirror(feathers)
+            + cbRing(46, '#8d6e63', 8) + cbRing(46, `url(#${u}p)`, 5) + cbRing(42.6, '#ffd54f', 1.2) + cbGems('#80d8ff')
+            + `<g transform="translate(50 96)"><circle r="9" fill="#fff" stroke="#ffd54f" stroke-width="2.2"/>${cbStar(6, '#ffc107')}</g>`;
+    }
+};
+/** A champion border's art ('wblegend' if the id isn't one). */
+function stormBorder(u = 'wb', id = 'wblegend') { return (CHAMP_BORDERS[id] || CHAMP_BORDERS.wblegend)(u); }
 /* ---------- Backup code (F10) ----------
    All progress as one block of text with a checksum, to paste into Notepad. */
 function hash32(s) {
@@ -1214,3 +1356,4 @@ function backupDue() { return PROFILE.games > 0 && PROFILE.games - (PROFILE.back
 function markBackedUp() { PROFILE.backupAt = PROFILE.games; saveProfile(); }
 /* 5.1.1: the World Boss builds set in master control (this browser's copy; the shared folder copy is merged at sync). */
 applyWbConfig();
+applyTwConfig();
