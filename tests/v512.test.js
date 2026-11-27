@@ -107,3 +107,21 @@ test('Tower setup (5.2.1): master control buffs or nerfs any tower, for every PC
   E.saveAdminData({ master: null, resets: {}, tw: { at: 9, towers: {} } });
   assert.deepStrictEqual(E.statsFor('dart', [0, 0, 0], null), base, 'reset: back to normal');
 });
+
+test('Champion card backgrounds (5.2.2): 10 of them, only the World Boss Champion shows theirs', () => {
+  const E = loadEngine();
+  assert.strictEqual(E.CHAMP_BGS.length, 10);
+  assert.strictEqual(new Set(E.CHAMP_BGS.map(b => b.id)).size, 10, 'ids are unique');
+  assert.strictEqual(E.champBgId('nope'), 'throne', 'anything else: the first one');
+  for (const b of E.CHAMP_BGS) {
+    const a = E.champBgHTML(b.id, 'x', 140, 170, 70, 44), b2 = E.champBgHTML(b.id, 'x', 140, 170, 70, 44);
+    assert.ok(a.startsWith('<span class="cbart"') && a.includes('<svg') && !a.includes('NaN') && !a.includes('undefined'), b.id);
+    assert.strictEqual(a, b2, b.id + ' draws the same every time');
+  }
+  E.run("WB_CHAMP_UID = 'champ00001'");
+  assert.strictEqual(E.champCardBg({ uid: 'champ00001', cbg: 'galaxy' }).id, 'galaxy', 'the champion: their pick');
+  assert.strictEqual(E.champCardBg({ uid: 'champ00001' }).id, 'throne', 'the champion, no pick yet: Royal Throne');
+  assert.strictEqual(E.champCardBg({ uid: 'other00001', cbg: 'galaxy' }), null, 'nobody else, even if their save asks');
+  E.run("WB_CHAMP_UID = ''");
+  assert.strictEqual(E.champCardBg({ uid: 'champ00001', cbg: 'galaxy' }), null, 'after the 7 days: no background');
+});

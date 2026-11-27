@@ -1339,3 +1339,80 @@ function markBackedUp() { PROFILE.backupAt = PROFILE.games; saveProfile(); }
 /* 5.1.1: the World Boss builds set in master control (this browser's copy; the shared folder copy is merged at sync). */
 applyWbConfig();
 applyTwConfig();
+
+/* 5.2.2: 10 Champion card backgrounds. The World Boss Champion picks one in Edit profile (id.cbg); it shows behind
+   their player card and their profile card, for as long as they are champion. Each is drawn for any card size
+   (W x H) around the avatar at (CX, CY); u keeps the SVG ids apart. */
+const CHAMP_BGS = [
+    { id: 'throne', name: 'Royal Throne', desc: 'Royal purple with turning golden rays', edge: '#ffd54f' },
+    { id: 'volcano', name: 'Volcano Lair', desc: 'Volcano, lava glow and rising embers', edge: '#ff6d00' },
+    { id: 'galaxy', name: 'Galaxy', desc: 'Nebula clouds, a ringed planet and twinkling stars', edge: '#7c4dff' },
+    { id: 'treasure', name: 'Treasure Hoard', desc: 'Golden light over a pile of coins', edge: '#ffca28' },
+    { id: 'aurora', name: 'Aurora', desc: 'Northern lights dancing over snowy hills', edge: '#69f0ae' },
+    { id: 'sunset', name: 'Ocean Sunset', desc: 'A golden sun setting over the waves', edge: '#ffb74d' },
+    { id: 'blossom', name: 'Cherry Blossom', desc: 'Pink spring sky and falling petals', edge: '#f48fb1' },
+    { id: 'storm', name: 'Thunderstorm', desc: 'Storm clouds, rain and flashing lightning', edge: '#90caf9' },
+    { id: 'arena', name: 'Champion Arena', desc: 'Spotlights pulsing over a cheering crowd', edge: '#ffd54f' },
+    { id: 'balloons', name: 'Balloon Sky', desc: 'Bright sky with balloons floating up', edge: '#4fc3f7' }
+];
+/** A champion card background id, or the first one for anything else. */
+function champBgId(id) { return CHAMP_BGS.some(b => b.id === id) ? id : CHAMP_BGS[0].id; }
+const champBgArt = (() => {
+    const f = n => n.toFixed(1);
+    const rnd = (seed) => () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const lg = (id, stops, x2 = 0, y2 = 1) => `<linearGradient id="${id}" x1="0" y1="0" x2="${x2}" y2="${y2}">${stops.map((c, i) => `<stop offset="${i / (stops.length - 1)}" stop-color="${c}"/>`).join('')}</linearGradient>`;
+    const rgAt = (id, stops, cx, cy, r) => `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${f(cx)}" cy="${f(cy)}" r="${f(r)}">${stops.map((c, i) => `<stop offset="${i / (stops.length - 1)}" stop-color="${c}"/>`).join('')}</radialGradient>`;
+    const balloon = (c, s = 1) => `<g transform="scale(${s})"><path d="M0 7 Q-1 12 1 16" stroke="#fff" stroke-width=".6" fill="none"/><ellipse rx="5" ry="6" fill="${c}"/><ellipse cx="-1.8" cy="-2.2" rx="1.3" ry="2" fill="#fff" opacity=".55"/><path d="M-1.2 6 L1.2 6 L0 4.6Z" fill="${c}"/></g>`;
+    const cloud = (x, y, s, col = '#fff', op = .9) => `<g transform="translate(${f(x)} ${f(y)}) scale(${s})" fill="${col}" opacity="${op}"><circle r="6"/><circle cx="6" cy="1" r="5"/><circle cx="-6" cy="1.5" r="4.5"/><rect x="-10" y="1" width="20" height="5" rx="2.5"/></g>`;
+    const blossom = (s) => `<g transform="scale(${s})">${[0, 1, 2, 3, 4].map(k => `<ellipse cy="-2.6" rx="2" ry="3" fill="#fce4ec" stroke="#f06292" stroke-width=".4" transform="rotate(${k * 72})"/>`).join('')}<circle r="1.2" fill="#ffd54f"/></g>`;
+    const coin = (x, y) => `<g transform="translate(${f(x)} ${f(y)})"><ellipse rx="6" ry="3" fill="#b8860b"/><ellipse cy="-1" rx="6" ry="3" fill="#ffd54f" stroke="#b8860b" stroke-width=".6"/><ellipse cy="-1" rx="3.4" ry="1.5" fill="none" stroke="#fff59d" stroke-width=".6"/></g>`;
+    const bolt = (x, y, s, d = 1.2) => `<path class="bdbolt" style="animation-duration:${d}s" transform="translate(${f(x)} ${f(y)}) scale(${s})" d="M1.5 -10 L-4.5 0 L0 0 L-2.5 9 L5.5 -2.5 L1 -2.5 Z" fill="#fff59d" stroke="#ffab00" stroke-width=".8"/>`;
+    
+    /** Draws background i for a W x H card with the avatar at (CX, CY). */
+    function art(i, u, W, H, CX, CY) {
+      const R = Math.max(W, H), r = rnd(31 + i);
+      const stars = (n, col = '#fff', y0 = 0, y1 = H) => { let s = ''; for (let k = 0; k < n; k++) s += `<circle ${k % 3 === 0 ? `class="bdgem" style="animation-delay:${f(r() * 2)}s"` : ''} cx="${f(r() * W)}" cy="${f(y0 + r() * (y1 - y0))}" r="${f(.5 + r() * 1.1)}" fill="${col}"/>`; return s; };
+      const rays = (n, col, op) => { let s = ''; for (let k = 0; k < n; k++) s += `<path d="M${f(CX)} ${f(CY)} L${f(CX - R * 1.5)} ${f(CY - R * .14)} L${f(CX - R * 1.5)} ${f(CY + R * .14)}Z" fill="${col}" opacity="${op}" transform="rotate(${f(k / n * 360)} ${f(CX)} ${f(CY)})"/>`; return `<g class="bdspin slow" style="transform-origin:${f(CX)}px ${f(CY)}px;transform-box:view-box">${s}</g>`; };
+      const float = (items, dur, dir) => items.map(([x, y, svg], k) => `<g class="cbfloat" style="--d:${dur + (k % 3)}s;--y:${dir * H * .4}px;animation-delay:-${f(k * 1.3)}s"><g transform="translate(${f(x)} ${f(y)})">${svg}</g></g>`).join('');
+      const spread = (n, y0, y1, fn) => { const out = []; for (let k = 0; k < n; k++) out.push([r() * W, y0 + r() * (y1 - y0), fn(k)]); return out; };
+      const bg = (body) => `<rect width="${W}" height="${H}" fill="url(#${u}a)"/>${body}`;
+      switch (i) {
+        case 0: return `<defs>${rgAt(u + 'a', ['#9c27b0', '#4a148c', '#14002b'], CX, CY, R * .8)}</defs>` + bg(rays(18, '#ffd54f', .16) + stars(Math.round(W * H / 1500), '#ffe082'));
+        case 1: { // volcano at the far side from the avatar, along the bottom
+          const vx = CX > W / 2 ? W * .25 : (W > H ? W * .7 : W * .48), b = H, top = H * .55, hw = Math.min(W, H) * .5;
+          return `<defs>${lg(u + 'a', ['#ff6f00', '#b71c1c', '#2a0600'])}</defs>` + bg(`<path d="M0 ${b} L0 ${f(H * .85)} L${f(vx - hw)} ${f(H * .72)} L${f(vx - 10)} ${f(top)} L${f(vx)} ${f(top + 6)} L${f(vx + 10)} ${f(top - 2)} L${f(vx + hw)} ${f(H * .7)} L${W} ${f(H * .82)} L${W} ${b}Z" fill="#1a0500"/>
+            <path d="M${f(vx - 10)} ${f(top)} L${f(vx)} ${f(top + 6)} L${f(vx + 10)} ${f(top - 2)} L${f(vx + 4)} ${f(top + 26)} L${f(vx - 2)} ${f(top + 44)} L${f(vx - 4)} ${f(top + 16)}Z" fill="#ff6d00"/><circle class="bdglow" cx="${f(vx)}" cy="${f(top)}" r="18" fill="#ffab00" opacity=".35"/>`
+            + float(spread(Math.round(W / 14), H * .6, H, () => `<circle r="${f(1 + r())}" fill="${['#ffab40', '#ffd180', '#ff6e40'][Math.floor(r() * 3)]}"/>`), 4, -1));
+        }
+        case 2: return `<defs>${rgAt(u + 'a', ['#7c4dff', '#311b92', '#05021a'], CX, CY, R * .9)}${rgAt(u + 'b', ['#ff80ab', '#ff80ab00'], W * .8, H * .75, R * .35)}</defs>` + bg(`<rect width="${W}" height="${H}" fill="url(#${u}b)" opacity=".5"/>${stars(Math.round(W * H / 600))}<g transform="translate(${f(W - 20)} 18)"><circle r="7" fill="#ffb74d"/><ellipse rx="12" ry="3" fill="none" stroke="#fff3e0" stroke-width="1.4" transform="rotate(-20)"/></g>`);
+        case 3: { let c = ''; const rows = 3; for (let row = 0; row < rows; row++) for (let x = 6 + row * 7; x < W; x += 13.5) c += coin(x, H - 4 - row * 6);
+          return `<defs>${rgAt(u + 'a', ['#ffe082', '#ff8f00', '#3e1f00'], CX, CY, R * .8)}</defs>` + bg(rays(14, '#fff8e1', .14) + c + stars(Math.round(W / 14), '#fff', 0, H * .7)); }
+        case 4: { const a1 = `M-5 ${f(H * .18)} C${f(W * .2)} ${f(H * .02)} ${f(W * .42)} ${f(H * .3)} ${f(W * .62)} ${f(H * .12)} C${f(W * .78)} 0 ${f(W * .9)} ${f(H * .16)} ${W + 5} ${f(H * .06)} L${W + 5} ${f(H * .18)} C${f(W * .9)} ${f(H * .28)} ${f(W * .78)} ${f(H * .14)} ${f(W * .62)} ${f(H * .26)} C${f(W * .42)} ${f(H * .42)} ${f(W * .2)} ${f(H * .16)} -5 ${f(H * .32)}Z`;
+          return `<defs>${lg(u + 'a', ['#020b2a', '#0d2a5c', '#16446e'])}${lg(u + 'b', ['#69f0ae00', '#69f0ae', '#b388ff00'], 1, 0)}</defs>` + bg(stars(Math.round(W * H / 900), '#fff', 0, H * .7) + `<path class="bdglow" d="${a1}" fill="url(#${u}b)" opacity=".75"/><path d="${a1}" fill="#e040fb" opacity=".18" transform="translate(0 ${f(H * .08)})"/>
+            <path d="M0 ${H} L0 ${f(H * .88)} C${f(W * .2)} ${f(H * .8)} ${f(W * .35)} ${f(H * .86)} ${f(W * .5)} ${f(H * .82)} C${f(W * .66)} ${f(H * .78)} ${f(W * .83)} ${f(H * .84)} ${W} ${f(H * .8)} L${W} ${H}Z" fill="#e3f2fd" opacity=".9"/>`); }
+        case 5: { const sea = H * .58, sx = W > H ? W * .62 : CX; let w = ''; for (let y = sea + 8; y < H; y += Math.max(8, (H - sea) / 5)) w += `<path d="M-6 ${f(y)} ${Array.from({ length: Math.ceil(W / 12) + 2 }, () => 'q6 -3 12 0').join(' ')}" stroke="#e1f5fe" stroke-width="1" fill="none" opacity=".5"/>`;
+          return `<defs>${lg(u + 'a', ['#ff7043', '#ffb74d', '#fff176'])}${lg(u + 'b', ['#0288d1', '#01579b', '#002f5c'])}</defs>` + bg(`<circle class="bdglow" cx="${f(sx)}" cy="${f(sea)}" r="${f(Math.min(W, H) * .28)}" fill="#fff59d" opacity=".5"/><circle cx="${f(sx)}" cy="${f(sea)}" r="${f(Math.min(W, H) * .18)}" fill="#ffeb3b"/><rect y="${f(sea)}" width="${W}" height="${f(H - sea)}" fill="url(#${u}b)"/>${w}${cloud(W * .15, H * .12, 1.2, '#fff3e0', .8)}${cloud(W * .85, H * .2, 1, '#fff3e0', .7)}`); }
+        case 6: { let br = `<path d="M-2 14 ${Array.from({ length: Math.ceil(W / 40) }, (_, k) => `C${f(k * 40 + 14)} ${k % 2 ? 6 : 22} ${f(k * 40 + 26)} ${k % 2 ? 22 : 6} ${f(k * 40 + 40)} 14`).join(' ')}" stroke="#5d4037" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+          for (let x = 6; x < W; x += 14) br += `<g transform="translate(${f(x)} ${f(10 + r() * 10)})">${blossom(1 + r() * .4)}</g>`;
+          return `<defs>${lg(u + 'a', ['#f8bbd0', '#f48fb1', '#ad1457'])}</defs>` + bg(br + float(spread(Math.round(W / 20) + 3, H * .2, H * .8, k => `<ellipse rx="1.6" ry="2.4" fill="${k % 2 ? '#fff' : '#fce4ec'}"/>`), 5, 1)); }
+        case 7: { let rain = ''; for (let k = 0; k < W * H / 800; k++) rain += `<path d="M${f(r() * W)} ${f(20 + r() * (H - 20))} l-3 8" stroke="#90caf9" stroke-width=".9" opacity=".5"/>`;
+          let cl = ''; for (let x = 10; x < W + 20; x += 42) cl += cloud(x, 10 + (x % 3) * 2, 2, x % 84 ? '#2b354a' : '#263043', 1);
+          const bx = CX > W / 2 ? [W * .12] : W > H ? [W * .55, W * .92] : [W * .12, W * .88];
+          return `<defs>${lg(u + 'a', ['#1a1f3a', '#2e3a55', '#4a5878'])}</defs>` + bg(rain + bx.map((x, k) => bolt(x, H * .45, Math.min(2.2, H / 60), 1.2 + k * .5)).join('') + cl); }
+        case 8: { let crowd = ''; for (let k = 0; k < W / 2.2; k++) crowd += `<circle cx="${f(r() * W)}" cy="${f(H - r() * Math.min(28, H * .2))}" r="${f(2.4 + r() * 1.6)}" fill="${['#ef5350', '#ffd54f', '#42a5f5', '#66bb6a', '#ab47bc'][k % 5]}" opacity=".75"/>`;
+          const beams = (W > H ? [W * .3, W * .55, W * .8] : [W * .3, W * .7]).map((x, k) => `<path d="M${f(x + (k % 2 ? 30 : -30))} ${H} L${f(x - 9)} 0 L${f(x + 9)} 0Z" fill="url(#${u}b)" opacity=".5"/>`).join('');
+          return `<defs>${lg(u + 'a', ['#0d1b2a', '#1b263b', '#3d1a5b'])}${lg(u + 'b', ['#fff59d', '#fff59d00'])}</defs>` + bg(`<g class="bdglow">${beams}</g>` + crowd + stars(Math.round(W / 10), '#ffd54f', 0, H * .5)); }
+        case 9: { const cols = ['#f44336', '#4caf50', '#ffeb3b', '#9c27b0', '#2196f3', '#ff9800'];
+          return `<defs>${lg(u + 'a', ['#29b6f6', '#81d4fa', '#e1f5fe'])}</defs>` + bg(cloud(W * .18, H * .86, 1.6) + cloud(W * .82, H * .92, 1.4) + cloud(W * .85, H * .12, 1.1, '#fff', .8)
+            + float(spread(Math.round(W / 22) + 3, H * .2, H * .9, k => balloon(cols[k % 6], .7 + r() * .3)).filter(([x]) => Math.abs(x - CX) > 40), 6, -1)); }
+      }
+    }
+    return art;
+})();
+/** The background art for a card, laid behind its content (the card needs the cbg class and --cbe). */
+function champBgHTML(id, u, W, H, CX, CY) {
+    const i = Math.max(0, CHAMP_BGS.findIndex(b => b.id === champBgId(id)));
+    return '<span class="cbart" aria-hidden="true"><svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + champBgArt(i, u, W, H, CX, CY) + '</svg></span>';
+}
+/** The card background this player shows (their id.cbg) when they are the World Boss Champion, else null. */
+function champCardBg(id) { return id && id.uid && id.uid === WB_CHAMP_UID ? CHAMP_BGS.find(b => b.id === champBgId(id.cbg)) : null; }

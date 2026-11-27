@@ -1,6 +1,6 @@
 /* Balloon Defense — game data: maps, modes, difficulties, balloons, towers, rounds, titles, avatars.
    Edit these tables to rebalance the game; no other file needs to change. */
-const VERSION = '5.2.1';
+const VERSION = '5.2.2';
 const W = 960, H = 600, TAU = Math.PI * 2;
 /* ---------- Tile grid (40 x 25 tiles of 24 px) ---------- */
 const TILE = 24, COLS = W / TILE, ROWS = H / TILE;
@@ -514,6 +514,10 @@ const SHOP = ['dart', 'tack', 'bomb', 'sniper', 'frost', 'signal', 'tesla', 'boa
 const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 /** Release notes, newest first (the News panel on the home page). */
 const NEWS = [
+    { v: '5.2.2', date: '2026-11-28', items: [
+            'World Boss Champion: 10 exclusive card backgrounds (Royal Throne, Volcano Lair, Galaxy, Treasure Hoard, Aurora, Ocean Sunset, Cherry Blossom, Thunderstorm, Champion Arena, Balloon Sky). The Champion picks one in Edit profile; it shows behind their player card and profile card for 7 days.',
+            'Shared folder: results, World Boss scores, logins and profile changes reach the other PCs in a few seconds.'
+        ] },
     { v: '5.2.1', date: '2026-11-27', items: [
             'World Boss Champion: 10 exclusive Champion borders (Boss Slayer, Inferno, Frost Titan, Royal Laurel, Dragon, Galaxy, Thunder God, Balloon Parade, Shadow Wings, Angel Halo). The Champion picks one in Edit profile and can switch any time for 7 days; it shows on their avatar everywhere.',
             'World Boss Champion: their name shines in gold everywhere. The World Boss banner shows the Champion prize, and the champion greeting has a Choose my border button.',

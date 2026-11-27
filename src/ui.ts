@@ -1285,7 +1285,18 @@ function champPickHTML(d, opt) {
     if (UI.modal !== 'editprofile' || !d.uid || d.uid !== WB_CHAMP_UID)
         return '';
     return `<div class="champpick"><div class="cphead"><b>Champion borders</b><small>World Boss Champion only · yours until the next champion is announced (Friday 5:01 PM) · click one to wear it</small></div>
-      ${champCardsHTML(d, champBorderId(d.cb), true)}</div>`;
+      ${champCardsHTML(d, champBorderId(d.cb), true)}
+      <div class="cphead"><b>Champion card backgrounds</b><small>Behind your player card and your profile card · click one to use it</small></div>
+      ${champBgCardsHTML(d, champBgId(d.cbg), true)}</div>`;
+}
+/** 5.2.2: the 10 Champion card backgrounds as numbered cards, each a small player card with this avatar (and its
+    champion border). `pick` makes them buttons for Edit profile; `cur` is marked Using. */
+function champBgCardsHTML(d, cur, pick) {
+    const av = avatarSVG({ animal: d.animal || 'fox', style: d.style || 'm', bg: d.bg || 'sky', border: champBorderId(d.cb || WB_CHAMP_CB), champ: true }, 60);
+    return `<div class="cpgrid">${CHAMP_BGS.map((b, i) => {
+        const on = cur === b.id, inner = `<i class="cpn">${i + 1}</i><span class="cbmini cbg" style="--cbe:${b.edge}">${champBgHTML(b.id, 'cbk' + i, 100, 120, 50, 46)}${av}</span><b>${esc(b.name)}</b><small>${esc(b.desc)}</small>${on ? '<em>Using</em>' : ''}`;
+        return pick ? `<button type="button" class="cpcard${on ? ' on' : ''}" data-act="pick" data-k="cbg" data-v="${b.id}" title="Use ${esc(b.name)}">${inner}</button>` : `<div class="cpcard${on ? ' on' : ''}">${inner}</div>`;
+    }).join('')}</div>`;
 }
 /** The 10 Champion borders as numbered cards, each on this avatar (d: animal, style, bg), with its name and look.
     `pick` makes them buttons for Edit profile; `cur` is marked Wearing. */
@@ -1704,7 +1715,7 @@ function saveNewPw() {
 }
 function openEditProfile() {
     const p = getId();
-    UI.draft = { uid: p.uid, name: p.name, animal: p.animal, style: p.style, bg: p.bg, border: p.border, cb: champBorderId(p.cb), title: p.title };
+    UI.draft = { uid: p.uid, name: p.name, animal: p.animal, style: p.style, bg: p.bg, border: p.border, cb: champBorderId(p.cb), cbg: champBgId(p.cbg), title: p.title };
     openModal('editprofile', `<div class="cardhead"><h2>Edit profile</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
     <div class="createtop"><div id="draftPrev"></div><div class="grow"><label class="lbl" for="nameIn">Player name</label>
       <div class="nameid"><input id="nameIn" maxlength="16" autocomplete="off" spellcheck="false" value="${esc(p.name)}"><span>#${p.tag}</span></div><div class="err" id="nameErr"></div>
@@ -1728,6 +1739,7 @@ function finishEdit() {
     Object.assign(p, { name: name.trim(), animal: UI.draft.animal, style: UI.draft.style, bg: UI.draft.bg, border: UI.draft.border, title: UI.draft.title || p.title });
     if (p.uid === WB_CHAMP_UID) { // the champion's pick of the champion borders
         p.cb = champBorderId(UI.draft.cb);
+        p.cbg = champBgId(UI.draft.cbg);
         WB_CHAMP_CB = p.cb;
     }
     saveId(p);
@@ -1958,9 +1970,9 @@ function renderPlayers(players) {
     // 5.1: you first, then everyone online, then the others by who was on last ("30m ago", "4h ago")
     const now = Date.now();
     $('players').innerHTML = sortPlayers(players.filter(pl => !pl.me || loggedIn()), now).map(pl => {
-        const on = isOnline(pl, now), seen = on ? 'Online' : agoShort(lastSeen(pl, now), now);
-        return `<button class="ptile${pl.me ? ' me' : ''}${pl.remote ? ' remote' : ''}${on ? ' online' : ''}" data-player="${esc(pl.key)}" title="Open ${esc(pl.id.name)}'s profile">
-      <i class="sdot ${on ? 'on' : 'off'}" title="${on ? 'Online' : 'Offline'}"></i>${pl.me ? '<i class="youbadge">You</i>' : ''}${avatarSVG(pl.id, 64)}<b>${pName(pl.id.uid, pl.id.name)}</b><small>Lv ${levelOf(pl.profile.xp)}</small><span class="ttl">${esc(titleOf(pl).name)}</span>
+        const on = isOnline(pl, now), seen = on ? 'Online' : agoShort(lastSeen(pl, now), now), cbg = champCardBg(pl.id);
+        return `<button class="ptile${pl.me ? ' me' : ''}${pl.remote ? ' remote' : ''}${on ? ' online' : ''}${cbg ? ' cbg' : ''}"${cbg ? ` style="--cbe:${cbg.edge}"` : ''} data-player="${esc(pl.key)}" title="Open ${esc(pl.id.name)}'s profile">
+      ${cbg ? champBgHTML(cbg.id, 'cbt', 140, 170, 70, 44) : ''}<i class="sdot ${on ? 'on' : 'off'}" title="${on ? 'Online' : 'Offline'}"></i>${pl.me ? '<i class="youbadge">You</i>' : ''}${avatarSVG(pl.id, 64)}<b>${pName(pl.id.uid, pl.id.name)}</b><small>Lv ${levelOf(pl.profile.xp)}</small><span class="ttl">${esc(titleOf(pl).name)}</span>
       <em class="seen${on ? ' on' : ''}" title="${on ? 'Online now' : 'Last online'}">${seen ? esc(seen) : 'Offline'}</em></button>`;
     }).join('') || '<p class="muted small">No players yet.</p>';
     checkOnlineToasts(players, now);
@@ -2359,9 +2371,9 @@ function openProfileCard(key = ACTIVE_KEY) {
     const badges = MAPS.reduce((s, m) => s + Object.keys(DIFF).filter(k => pl.records[m.id] && pl.records[m.id][k] && pl.records[m.id][k].won).length, 0);
     const stars = MAPS.reduce((s, m) => s + Object.keys((pl.records[m.id] && pl.records[m.id].modes) || {}).length, 0);
     const towers = SHOP.map(t => ({ t, total: (pl.towers[t] || {}).total || 0 })).sort((a, b) => b.total - a.total).slice(0, me ? 9 : 5);
-    const others = players.length - 1;
+    const others = players.length - 1, cbg = champCardBg(p);
     openModal('profile', `<div class="cardhead"><h2>${me ? 'Your profile' : pl.remote ? 'Player <small class="muted">· another PC</small>' : 'Player'}</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
-    <div class="pcard"><div class="pav">${avatarSVG(p, 120)}</div><div class="grow">
+    <div class="pcard${cbg ? ' cbg' : ''}"${cbg ? ` style="--cbe:${cbg.edge}"` : ''}>${cbg ? champBgHTML(cbg.id, 'cbp', 760, 230, 74, 115) : ''}<div class="pav">${avatarSVG(p, 120)}</div><div class="grow">
       <div class="pname">${pName(p.uid, p.name)}<span>#${esc(p.tag)}</span></div><div class="ptitle">${esc(title.name)}</div>
       ${nt ? `<div class="pnext">Next title: <b>${esc(nt.name)}</b> · ${P.pops.toLocaleString()} / ${nt.pops.toLocaleString()} pops</div>` : '<div class="pnext">Highest title reached</div>'}
       <div class="medalrow" title="1st, 2nd and 3rd places held on Standard stage boards">${MEDALS.map(m => `<span><img src="assets/ui/medal-${m}.svg" alt="${m}">${md[m]}</span>`).join('')}<small class="muted">${medalPoints(md)} pts${p.uid && p.uid === CROWN_UID ? ' · <b class="crownc">Global #1</b>' : ''}${others ? '' : ' · add players to compete'}</small></div>
@@ -2411,7 +2423,7 @@ function wbInfoHTML() {
       <li>The boss can't be frozen, stunned or slowed. Towers with extra damage to blimps do that extra damage to it too.</li>
       <li>It summons balloons every <b>15 seconds</b>, every <b>10 seconds</b> after 10 minutes, and every <b>5 seconds</b> after 20 minutes. They get <b>1% stronger every minute</b>, and tougher kinds come in over time: ceramics from 18 minutes, blimps from 24. Balloons that reach the END take lives.</li>
       <li><b>Ranking:</b> popping all ${WB_TIERS.length} tiers ranks first, then the <b>fastest</b>, then the <b>most lives left</b>. Runs that don't pop all ${WB_TIERS.length} rank below every win, by the <b>damage you deal</b>: every hit on the boss in full, plus every balloon layer you pop, with no cap. Your best run of the day counts on that day's board, at the bottom of the leaderboards.</li>
-      <li>The <b>Champion</b> unlocks <b>10 exclusive Champion borders</b> for 7 days, until the next champion is announced, and can switch between them any time in <b>Edit profile</b>. The one they pick shows on their avatar everywhere. Nobody else can wear them.</li>
+      <li>The <b>Champion</b> unlocks <b>10 exclusive Champion borders</b> and <b>10 card backgrounds</b> for 7 days, until the next champion is announced, and can switch between them any time in <b>Edit profile</b>. The border shows on their avatar everywhere, the background behind their player and profile cards. Nobody else can wear them.</li>
       <li>World Boss runs don't count on the tier or stage boards, and they can't be saved half-way: your damage so far always counts.</li>
     </ul>
     <h3>The four bosses</h3>
@@ -2455,16 +2467,18 @@ function wbBoardWeek(now = wbNow()) { const k = wbWeek(now); return now >= wbDay
 /** 5.2.1: the champion prize on the World Boss banner: the 10 Champion borders on your own animal. Click for a closer look. */
 function champPrizeStrip() {
     const id = getId() || {}, look = (b) => ({ animal: id.animal || 'fox', style: id.style || 'm', bg: id.bg || 'sky', border: b.id, champ: true });
-    return `<button class="champprize" data-act="champprize" title="See the Champion prize"><span class="cpl"><b>Champion prize</b><small>10 exclusive borders · 7 days</small></span>
+    return `<button class="champprize" data-act="champprize" title="See the Champion prize"><span class="cpl"><b>Champion prize</b><small>10 borders + 10 card backgrounds · 7 days</small></span>
       <span class="cpavs">${BORDERS.filter(b => b.champ).map(b => avatarSVG(look(b), 30)).join('')}</span></button>`;
 }
 /** The Champion prize window: every Champion border as a card on your own avatar. The champion can go and pick one. */
 function openChampPrize() {
     const id = getId() || {}, me = !!(id.uid && id.uid === WB_CHAMP_UID), cur = champBorderId(id.cb);
     openModal('champprize', `<div class="cardhead"><h2>Champion prize</h2><button class="iconbtn x" data-act="close"><img src="assets/ui/close.svg" alt="Close"></button></div>
-    <p class="lead">The World Boss Champion (Elite #1, announced Friday at 5:01 PM) unlocks all 10 of these borders for 7 days and can switch between them any time. Nobody else can wear them.</p>
+    <p class="lead">The World Boss Champion (Elite #1, announced Friday at 5:01 PM) unlocks all 10 of these borders and 10 card backgrounds for 7 days and can switch between them any time. Nobody else can use them.</p>
     ${champCardsHTML(id, me ? cur : '', false)}
-    <div class="row">${me ? '<button class="btn primary" data-act="champpick">Choose my border</button>' : ''}<button class="btn" data-act="close">Close</button></div>`, 'wide');
+    <h3 class="cpsub">Champion card backgrounds</h3>
+    ${champBgCardsHTML(id, me ? champBgId(id.cbg) : '', false)}
+    <div class="row">${me ? '<button class="btn primary" data-act="champpick">Choose my border and background</button>' : ''}<button class="btn" data-act="close">Close</button></div>`, 'wide');
 }
 /** Edit profile, scrolled to the Champion border picker. */
 function openChampPick() {
@@ -2490,7 +2504,7 @@ function renderWorldBoss(players = allPlayers()) {
         <div class="wbmeta"><span>Map: <b>${esc(p.map.name)}</b></span><span>HP <b>${p.boss.hp.toLocaleString()}</b></span><span>Start <b>${money(p.boss.cash)}</b> · <b>${p.boss.lives.toLocaleString()}</b> lives</span></div>
         <div class="row left">${open ? '<button class="btn primary big" data-act="wbfight">Fight · ' + (mode === 'elite' ? 'Elite' : 'Normal') + '</button>' : '<button class="btn big" disabled>' + (wbNextStart().elite ? 'Elite' : 'Normal') + ' opens ' + esc(wbOpensTxt()) + '</button>'}</div></div></div>
       ${champPrizeStrip()}
-      <div class="wbfoot muted small">Normal on Thursday, Elite on Friday, 7:30 AM to 5:00 PM (PH time) · ${WB_TIERS.length} tiers, the boss must not reach the END · the Champion (Elite #1) is announced on Friday at 5:01 PM and unlocks 10 exclusive Champion borders for 7 days${champ ? ' · Champion: <b>' + esc(champ.id.name) + '</b>' : ''}</div></div>
+      <div class="wbfoot muted small">Normal on Thursday, Elite on Friday, 7:30 AM to 5:00 PM (PH time) · ${WB_TIERS.length} tiers, the boss must not reach the END · the Champion (Elite #1) is announced on Friday at 5:01 PM and unlocks 10 exclusive Champion borders and card backgrounds for 7 days${champ ? ' · Champion: <b>' + esc(champ.id.name) + '</b>' : ''}</div></div>
     <div class="mtable wbboard"><div class="mthead"><h3><img src="assets/ui/trophy.svg" alt="">World Boss · ${today ? 'Top 5 today' : bk === k ? 'This week' : 'Last event'}</h3>
       <span class="wbtabs"><button class="wbtab${elite ? ' on' : ''}" data-act="wbtab" data-tab="elite">Elite</button><button class="wbtab${elite ? '' : ' on'}" data-act="wbtab" data-tab="normal">Normal</button></span></div>
     <div class="wbrows"><table><thead><tr><th></th><th class="l">Top 5 players</th><th>Result</th><th>Time</th><th>Lives</th><th>Dmg</th></tr></thead>
@@ -2561,9 +2575,9 @@ function wbChampHTML(c, players) {
       <h2>${me ? 'Congratulations, <span class="champname">you</span> are the World Boss Champion!' : 'Congratulations, ' + pName(c.p.id.uid, c.p.id.name) + '!'}</h2>
       <p class="lead">${me ? 'You' : name} ${c.h && c.h.won ? 'popped all ' + WB_TIERS.length + ' tiers of' : 'dealt the most damage to'} <b>${esc(c.boss.name)}</b>${c.h && c.h.won ? ' the fastest' : ''} on ${esc(map.name)}.</p>
       <div class="wbc-dmg"><b>${c.h && c.h.won ? fmtClock(+c.h.t || 0) : c.d.toLocaleString()}</b><span>${c.h && c.h.won ? 'time · ' + (+c.h.lives || 0).toLocaleString() + ' lives left' : 'damage'}</span></div>
-      <div class="wbc-border">${me ? 'You unlocked' : name + ' unlocked'} <b>10 exclusive Champion borders</b> for 7 days, until the next champion is announced. ${me ? 'Pick yours any time in <b>Edit profile</b>: it shows on your avatar everywhere.' : 'Only the Champion can wear them.'}</div>
+      <div class="wbc-border">${me ? 'You unlocked' : name + ' unlocked'} <b>10 exclusive Champion borders</b> and <b>10 card backgrounds</b> for 7 days, until the next champion is announced. ${me ? 'Pick yours any time in <b>Edit profile</b>: the border shows on your avatar everywhere, the background on your player and profile cards.' : 'Only the Champion can wear them.'}</div>
       ${others ? `<div class="wbc-others">${others}</div>` : ''}
-      <div class="row">${me ? '<button class="btn primary big" data-act="champpick">Choose my border</button><button class="btn big" data-act="champok">Later</button>' : '<button class="btn primary big" data-act="champok">Congratulations!</button>'}</div>
+      <div class="row">${me ? '<button class="btn primary big" data-act="champpick">Choose my border and background</button><button class="btn big" data-act="champok">Later</button>' : '<button class="btn primary big" data-act="champok">Congratulations!</button>'}</div>
     </div>`;
 }
 /** Closes the greeting: back to what was on screen, or the pause menu when a game was running. */
