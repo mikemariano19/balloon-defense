@@ -1047,6 +1047,7 @@ body.locked #modal{background:radial-gradient(circle at 15% 20%,rgba(77,150,255,
 .csent{font-size:11px;color:var(--muted);margin:3px 4px 0}
 /* 5.2.1: the World Boss Champion's name shines: gold with a purple glint sweeping across it */
 .champname{background:linear-gradient(100deg,#ffb300 0%,#ffd54f 30%,#fffde7 42%,#e040fb 50%,#fffde7 58%,#ffd54f 70%,#ffb300 100%);background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;font-weight:900;animation:champshine 2.8s linear infinite;filter:drop-shadow(0 0 4px rgba(255,213,79,.6))}
+.champname{font-size:inherit!important;letter-spacing:inherit} /* same size as the name it replaces (.ptile span etc. would shrink it) */
 @keyframes champshine{from{background-position:120% 0}to{background-position:-120% 0}}
 @media (prefers-reduced-motion:reduce){.champname{animation:none;background-position:50% 0}}
 /* 5.2.1: master control Tower setup */

@@ -5,6 +5,8 @@
    the office network. No DOM access at load time, so the tests can load this file too. */
 const SHARE_DIR = 'balloon-defense-players';
 const SHARE_FILE = /^p-([a-z0-9]{6,20})\.json$/;
+/** The fast-update marker (Share.pulse / Share.watch); its name doesn't match SHARE_FILE, so syncs skip it. */
+const PULSE_FILE = '_pulse.json';
 /** Where this copy of the game was opened from, as a Windows path, so each PC knows which folder to pick.
     kind: 'network' (\\server\share\…), 'drive' (a drive letter: shared if it's a mapped network drive), 'local' (C:), 'web' (not a file). */
 function gameFolder(href = typeof location !== 'undefined' ? location.href : '') {
@@ -136,8 +138,51 @@ const Share = {
         this.chain = this.chain.then(() => this.syncWith(this.handle)).catch(() => { });
         return this.chain;
     },
-    syncSoon() { if (this.connected())
-        this.sync(); },
+    /** After something that matters (a game, a login, a profile change): sync now, then tell the other PCs. */
+    syncSoon() {
+        if (this.connected())
+            this.sync().then(() => this.pulse());
+    },
+    /* ----- Fast updates (5.2.1) -----
+       A tiny marker file (balloon-defense-players/_pulse.json: { at, pc }) that a PC touches whenever it saves something
+       that matters. Every PC reads only that marker every few seconds (watch) and runs a full sync as soon as another
+       PC has touched it, so results, logins and profile changes show up in seconds instead of at the next 30 s sync.
+       The 30 s sync (the "still online" heartbeat) doesn't touch it, so a full office doesn't keep every PC syncing. */
+    pulseAt: 0,
+    watching: false,
+    async pulse(root = this.handle) {
+        if (!root)
+            return;
+        try {
+            const dir = await root.getDirectoryHandle(SHARE_DIR, { create: true }), at = Math.max(Date.now(), this.pulseAt + 1);
+            this.pulseAt = at;
+            await writeText(dir, PULSE_FILE, JSON.stringify({ at, pc: thisPcId() }));
+        }
+        catch (e) { }
+    },
+    /** Reads the marker; when another PC touched it since we last looked, syncs. True when it synced. */
+    async watch(root = this.handle) {
+        if (!root || this.watching || this.state === 'syncing')
+            return false;
+        this.watching = true;
+        try {
+            const dir = await root.getDirectoryHandle(SHARE_DIR, { create: true });
+            const o = JSON.parse(await (await (await dir.getFileHandle(PULSE_FILE)).getFile()).text()), at = +o.at || 0;
+            if (at <= this.pulseAt)
+                return false;
+            this.pulseAt = at;
+            if (o.pc === thisPcId())
+                return false;
+            await (root === this.handle ? this.sync() : this.syncWith(root));
+            return true;
+        }
+        catch (e) { // no marker yet, or it was being written: try again next time
+            return false;
+        }
+        finally {
+            this.watching = false;
+        }
+    },
     /** Set when the active player's save was replaced by a newer copy from another PC: the page must reload. */
     reload: false,
     async syncWith(root) {
@@ -252,8 +297,10 @@ const Share = {
     /** Saves a change to the master control data here and (when connected) in the shared folder. */
     async saveAdmin(next) {
         saveAdminData(mergeAdmin(adminData(), next));
-        if (this.connected())
+        if (this.connected()) {
             await this.readAdmin();
+            await this.pulse();
+        }
     },
     /** Master control: brings a deleted profile back from every copy still around (its backups in the folder and in
         this browser). Its player file is written again, so it shows on every PC and its owner can log in. */
@@ -285,6 +332,7 @@ const Share = {
             const dir = await this.handle.getDirectoryHandle(EVENT_DIR, { create: true });
             const at = Date.now();
             await writeText(dir, 'e-' + at + '-' + ev.uid + '.json', JSON.stringify(Object.assign({ v: 1, at, pc: thisPcId() }, ev)));
+            await this.pulse();
         }
         catch (e) { }
     },
@@ -361,6 +409,7 @@ const Share = {
             }
             const pl = localPlayers().find(p => p.me);
             await writeText(dir, name, JSON.stringify(shareFileData(pl, readSlot(pl.key), true)));
+            await this.pulse();
         }).catch(() => { });
         return this.chain;
     },
@@ -607,7 +656,7 @@ function onStoreChange(k) {
     if (k === 'run' || k === 'noteIds' || k === 'chatRead' || k === 'autoBackupAt' || typeof Share === 'undefined' || !Share.connected())
         return;
     clearTimeout(PUSH_T);
-    PUSH_T = setTimeout(() => Share.pushActive(), 4000);
+    PUSH_T = setTimeout(() => Share.pushActive(), 1500);
 }
 async function writeText(dir, name, text) {
     const fh = await dir.getFileHandle(name, { create: true }), w = await fh.createWritable();

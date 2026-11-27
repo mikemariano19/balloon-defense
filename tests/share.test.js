@@ -121,3 +121,21 @@ test('a read-only shared folder gives a clear message', async () => {
   assert.strictEqual(A.Share.state, 'error');
   assert.match(A.Share.error, /read-only/);
 });
+
+test('fast updates (5.2.1): a PC touches the marker, the others sync at their next check', async () => {
+  const folder = fakeFolder();
+  const A = loadEngine({ storageObj: fakeStorage() }), B = loadEngine({ storageObj: fakeStorage() });
+  A.createProfile({ name: 'Alice' });
+  B.createProfile({ name: 'Bob' });
+  await B.Share.syncWith(folder);
+  assert.strictEqual(await B.Share.watch(folder), false, 'no marker yet: nothing to do');
+  await A.Share.syncWith(folder);
+  await A.Share.pulse(folder);
+  assert.ok(folder.sub('balloon-defense-players').files.has('_pulse.json'), 'the marker is in the players folder');
+  assert.strictEqual(await A.Share.watch(folder), false, 'a PC ignores its own marker');
+  assert.ok(!B.allPlayers().some(p => p.id.name === 'Alice'), 'B has not seen Alice yet');
+  assert.strictEqual(await B.Share.watch(folder), true, 'B sees the marker changed and syncs');
+  assert.ok(B.allPlayers().some(p => p.id.name === 'Alice'), 'B now has Alice');
+  assert.strictEqual(await B.Share.watch(folder), false, 'nothing new: no extra sync');
+  assert.strictEqual(folder.sub('balloon-defense-players').files.size, 3, 'two player files and the marker (the marker is not read as a player)');
+});

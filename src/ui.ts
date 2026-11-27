@@ -2293,6 +2293,9 @@ $('shareBox').addEventListener('click', (e) => { const b = (e.target as any).clo
 // every 30 s: write this PC's players (the active one also says "in use here"), read everyone else's, and new game results
 setInterval(() => { if (Share.connected())
     Share.sync(); }, 30000);
+// 5.2.1: every 4 s, read only the shared folder's "something changed" marker; sync at once when another PC touched it
+setInterval(() => { if (Share.connected())
+    Share.watch(); }, 4000);
 /* ----- Notifications: another player won or lost a game ----- */
 function onPlayerEvent(ev) {
     if (SETTINGS.notify === false)

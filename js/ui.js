@@ -2369,6 +2369,11 @@ setInterval(() => {
     if (Share.connected())
         Share.sync();
 }, 30000);
+// 5.2.1: every 4 s, read only the shared folder's "something changed" marker; sync at once when another PC touched it
+setInterval(() => {
+    if (Share.connected())
+        Share.watch();
+}, 4000);
 /* ----- Notifications: another player won or lost a game ----- */
 function onPlayerEvent(ev) {
     if (SETTINGS.notify === false)
