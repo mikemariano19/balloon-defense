@@ -149,9 +149,8 @@ function onVictory() {
     afterGameEnd(game.result);
     const d = game.diff, mode = game.mode !== 'standard';
     const reward = game.daily ? `<img class="medalbig" src="assets/ui/calendar.svg" alt=""><h2>Daily challenge complete!</h2>`
-        : game.mode === 'hero' ? `<img class="medalbig" src="assets/ui/star.svg" alt=""><h2>Victory!</h2>`
-            : mode ? `<img class="medalbig" src="assets/ui/star.svg" alt=""><h2>Challenge complete!</h2>`
-                : `<div class="medalbig">${badgeSVG(d.badge, true, 80)}</div><h2>Victory!</h2>`;
+        : mode ? `<img class="medalbig" src="assets/ui/star.svg" alt=""><h2>Challenge complete!</h2>`
+            : `<div class="medalbig">${badgeSVG(d.badge, true, 80)}</div><h2>Victory!</h2>`;
     const what = game.daily ? 'today\'s daily challenge' : `<b>${esc(game.map.name)}</b> on <b>${d.name}</b>` + (mode ? ` in <b>${MODES[game.mode].name}</b> mode` : '');
     openModal('end', `<div class="confetti">${Array.from({ length: 24 }, (_, i) => `<i style="--i:${i};--c:${['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ce93d8'][i % 5]}"></i>`).join('')}</div>
     <div style="text-align:center">${reward}<p class="lead">You beat ${what}${!mode && !game.daily ? ` and earned the ${d.name} badge` : ''}.</p></div>
@@ -599,9 +598,9 @@ function buildShop() {
     buildHeroShop();
     showInfo(null);
 }
-/** Heroes mode: the heroes above the towers. Once one is picked for this game, only that one is listed. */
+/** The heroes above the towers. Once one is picked for this game, only that one is listed. */
 function buildHeroShop() {
-    const el = $('heroShop'), on = game.mode === 'hero';
+    const el = $('heroShop'), on = heroesAllowed();
     el.innerHTML = '';
     el.classList.toggle('on', on);
     if (!on)
@@ -627,7 +626,7 @@ function heroSkillsHTML(type, level) {
 }
 /** Z / X, the tray and the hero panel: use hero ability `i`, or start aiming it (press again to cancel). */
 function heroAbilityKey(i) {
-    if (!game || game.over || game.mode !== 'hero')
+    if (!game || game.over)
         return;
     const t = heroTower(), ab = t && HEROES[t.type].abilities[i], why = heroAbilityProblem(i);
     if (why) {
@@ -2142,7 +2141,7 @@ function openMapModal(i) {
     }).join('')}</div>
     ${stageBoard(m, UI.menuDiff)}
     <div class="modes">${Object.entries(MODES).filter(([, md]) => !md.hidden).map(([k, md]) => `<button class="mode${k === UI.menuMode ? ' on' : ''}" data-act="mode" data-mode="${k}" title="${esc(md.desc)}">${CHALLENGES.includes(k) ? `<img src="assets/ui/${ch[k] ? 'star' : 'star-empty'}.svg" alt="">` : ''}${md.name}</button>`).join('')}</div>
-    <p class="modedesc">${esc(MODES[UI.menuMode].desc)}${UI.menuMode === 'hero' ? ' Heroes games are not ranked.' : UI.menuMode !== 'standard' ? ' Challenge runs are not ranked.' : ''}</p>
+    <p class="modedesc">${esc(MODES[UI.menuMode].desc)}${UI.menuMode !== 'standard' ? ' Challenge runs are not ranked.' : ''}</p>
     ${run ? `<div class="warnline">Starting a new game replaces your saved game on ${esc(MAPS.find(x => x.id === run.mapId).name)}.</div>` : ''}
     <div class="row"><button class="btn primary big" data-act="play">Play ${DIFF[UI.menuDiff].name}${UI.menuMode !== 'standard' ? ' · ' + MODES[UI.menuMode].name : ''}</button></div></div>`, 'wide');
     c.querySelector('#mmPrev').appendChild(mapPreview(m, 1200));

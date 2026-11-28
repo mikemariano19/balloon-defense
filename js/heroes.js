@@ -1,5 +1,5 @@
 "use strict";
-/* Balloon Defense — heroes: four original heroes who join in Heroes mode. The tables come first, then the rules. No
+/* Balloon Defense — heroes: four original heroes. One per game, listed above the towers in every mode except Primary Only. The tables come first, then the rules. No
    drawing or DOM code lives here. A hero is placed like a tower (it is an entry in game.towers and TD) but has no
    upgrade paths: it levels up by itself and has two abilities. Heroes are never in SHOP. */
 const HERO_MAX_LEVEL = 10;
@@ -69,10 +69,12 @@ function heroLevel(t) {
 }
 /** The hero on the field (one at most), or null. */
 function heroTower() { return game ? game.towers.find(t => TD[t.type].hero) || null : null; }
+/** Heroes join every game except modes that limit the towers (Primary Only). */
+function heroesAllowed() { return !!game && !MODES[game.mode].towers; }
 /** Why this hero can't be placed now ('' = it can). The first hero that fights a round is the hero for that game. */
 function heroProblem(id) {
-    if (game.mode !== 'hero')
-        return 'Heroes only join Heroes mode';
+    if (!heroesAllowed())
+        return 'No heroes in ' + MODES[game.mode].name + ' mode';
     if (game.heroId && game.heroId !== id)
         return 'Your hero this game is ' + HEROES[game.heroId].name;
     if (heroTower())

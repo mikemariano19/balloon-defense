@@ -514,8 +514,8 @@ function snapshot() {
     const g = game;
     if (!g || g.over || g.wb)
         return; // a World Boss run isn't saved half-way: its damage is recorded as it goes (wbRecord)
-    // a Heroes save is v5: a build without heroes can't load a hero, so it must not offer to continue one
-    store.set('run', { v: g.mode === 'hero' ? 5 : 4, mapId: g.map.id, diffKey: g.diffKey, mode: g.mode, daily: g.daily, round: g.round, lives: g.lives, cash: Math.floor(g.cash), won: g.won, pops: g.pops, time: g.time,
+    // a save with a hero is v5: a build without heroes can't load one, so it must not offer to continue it
+    store.set('run', { v: g.heroId || g.towers.some(t => TD[t.type].hero) ? 5 : 4, mapId: g.map.id, diffKey: g.diffKey, mode: g.mode, daily: g.daily, round: g.round, lives: g.lives, cash: Math.floor(g.cash), won: g.won, pops: g.pops, time: g.time,
         clock: g.clock, leaked: g.leaked, ua: g.ua, cleared: g.cleared, submitted: g.submitted,
         towers: g.towers.map(t => ({ type: t.type, x: t.x, y: t.y, lv: t.lv, spent: t.spent, fresh: t.fresh, pops: t.pops, xpPops: t.xpPops, target: t.target, ang: t.ang, cd: t.cd, payT: t.payT,
             ...(TD[t.type].hero ? { heroXp: t.heroXp || 0, shots: t.shots || 0, splitT: t.splitT || 0 } : {}) })),
@@ -526,7 +526,12 @@ function snapshot() {
             frozen: b.frozen, slow: b.slow, regrow: b.regrow, regTop: b.regTop, fort: b.fort, bossStage: b.bossStage, spdMul: b.spdMul, rootT: b.rootT })) : [],
         savedAt: Date.now() });
 }
-function savedRun() { const r = store.get('run', null); return r && (r.v === 3 || r.v === 4 || r.v === 5) && MAPS.some(m => m.id === r.mapId) && DIFF[r.diffKey] ? r : null; }
+function savedRun() {
+    const r = store.get('run', null);
+    if (r && !MODES[r.mode])
+        r.mode = 'standard'; // 5.3 test builds had a Heroes mode
+    return r && (r.v === 3 || r.v === 4 || r.v === 5) && MAPS.some(m => m.id === r.mapId) && DIFF[r.diffKey] ? r : null;
+}
 function clearRun() { store.set('run', null); }
 function saveRecord() {
     if (game.mode !== 'standard' || game.daily)
@@ -1124,7 +1129,7 @@ function endRound() {
             PROFILE.perfect++;
         saveRecord();
         let xp = XP.win;
-        if (CHALLENGES.includes(g.mode)) { // Heroes mode is easier, not a challenge: no star and no bonus
+        if (CHALLENGES.includes(g.mode)) {
             saveChallengeWin();
             xp += XP.challengeWin;
         }

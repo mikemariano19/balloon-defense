@@ -13,7 +13,7 @@ This document states what each of today's updates must do. Times are Philippine 
 | U1 | Version 5.2.2: Champion card backgrounds | `main` | `6398a97` (01:28) | Yes | Yes, by the local record of `origin/main` |
 | U2 | Gold Mine pays every 10 seconds | `agent/tomas` | `cb4369e` (20:23) | No | No push seen |
 | U3 | Balance pass and stage report tool | `agent/bo` | `35c312b` (19:29), `2467a04` (19:38) | No | No push seen |
-| U4 | Heroes mode | `agent/ivy`; staged copy in `agent/tomas` | `ae8d14f` (21:52); the copy is not committed | No | No push seen |
+| U4 | Heroes | `agent/ivy`; staged copy in `agent/tomas` | `ae8d14f` (21:52); the copy is not committed | No | No push seen |
 | U5 | Research, reviews and previews | `agent/condoriano`, `agent/ivy`, `agent/bo` | `f2d2d47`, `d41b5b9`, `1869875`, `02698f3` | No | No push seen |
 
 **No single folder has all of the updates.** The `tomas` work folder has U2 and U4. The `bo` work folder has U3.
@@ -93,21 +93,21 @@ Prices are base prices, before the difficulty multiplier and discounts.
 
 **Effect to note:** Medium ends at round 60, so its new ramp (after round 70) changes freeplay only. The normal Medium game gets harder through fewer lives.
 
-## 6. U4: Heroes mode
+## 6. U4: Heroes
 
 ### 6.1 Rules
 
 | ID | Requirement |
 |---|---|
-| U4-1 | Heroes is a separate game mode, playable on a map. Heroes cannot be placed in other modes. |
+| U4-1 | Heroes are not a game mode. They are placed like towers in every mode except Primary Only (which allows only its four towers). (Changed 29 November: Heroes was first built as a separate mode.) |
 | U4-2 | One hero per game. Before it fights a round it can be changed; after that, only that hero can be used. |
 | U4-3 | A hero is placed like a 2 × 2 tower. It is listed above the towers and has no upgrade paths. |
 | U4-4 | A hero has levels 1 to 10, earned during the game. At the end of each round a hero on the field gains 10 + 2 × round XP. Placed on round 1, it is level 3 after round 5 and level 10 after round 32. |
 | U4-5 | The first ability unlocks at level 3 (key Z), the second at level 10 (key X). Abilities need a running round and a finished cooldown. |
 | U4-6 | Selling a hero loses its levels. Ability cooldowns stay. Money spent since the last round started is refunded in full; the rest at 70%. |
 | U4-7 | Signal Towers buff heroes like other towers. |
-| U4-8 | Heroes games are not ranked and give no challenge star or bonus. Player XP and tower XP are still earned; the hero earns no tower XP. |
-| U4-9 | A saved game keeps the hero, its level, cooldowns and running effects. Heroes saves are version 5; other saves stay version 4. |
+| U4-8 | A game with a hero counts like any other game: records, rankings, challenge stars and XP. The hero itself earns no tower XP. |
+| U4-9 | A saved game keeps the hero, its level, cooldowns and running effects. A save with a hero (picked or on the field) is version 5; saves without one stay version 4. An old save from the removed Heroes mode continues as Standard. |
 | U4-10 | The hero panel shows portrait, level, XP, targeting, abilities, skills and Sell. |
 
 ### 6.2 Heroes
@@ -162,8 +162,8 @@ Hero buffs to other towers never apply to support towers.
 |---|---|---|
 | T-1 Gold Mine | `tomas` | Costs $1,500 on Medium before discounts; pays at 10 s of a round; no pay between rounds |
 | T-2 Payday | `tomas` | Gives 5 payouts at once, 8 when stronger |
-| T-3 Heroes | `tomas` or `ivy` | Hero places, levels up, Z works at level 3 and X at level 10 |
-| T-4 Heroes save | `tomas` or `ivy` | Leaving and continuing keeps the hero and its level |
+| T-3 Heroes | main | In a Standard game, the heroes are above the towers; one hero places, levels up, Z works at level 3 and X at level 10 |
+| T-4 Heroes save | main | Leaving and continuing keeps the hero and its level |
 | T-5 Balance | `bo` | Lives are 150 / 100 / 60 / 1 |
 | T-6 Champion background | main | The Champion can pick one and it shows on both cards |
 

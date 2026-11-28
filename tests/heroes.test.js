@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const { loadEngine, fakeStorage } = require('./harness');
 
 const STEP = 1 / 60;
-function fresh(mode = 'hero', opts) {
+function fresh(mode = 'standard', opts) {
   const E = loadEngine(opts);
   E.DEV.unlockAll = true;
   E.createGame({ mapIdx: 0, diffKey: 'medium', mode });
@@ -42,12 +42,12 @@ test('four heroes, kept out of the tower shop and tower setup', () => {
     assert.strictEqual(E.heroSkillList(id).filter(s => s[3] >= 0).length, 2, id);
   }
   assert.deepStrictEqual(Object.keys(E.cleanTwConfig({ at: 1, towers: { fern: { dmg: 500 }, dart: { dmg: 120 } } }).towers), ['dart']);
-  assert.ok(!E.CHALLENGES.includes('hero'), 'never a daily challenge');
+  assert.ok(!E.MODES.hero, 'heroes are not a mode');
 });
 
-test('heroes only join Heroes mode, one per game, at the preview prices', () => {
-  const std = fresh('standard');
-  assert.match(std.shopProblem('fern'), /Heroes mode/);
+test('heroes join every mode but Primary Only, one per game, at the preview prices', () => {
+  for (const m of ['standard', 'halfcash', 'notier3', 'reverse']) assert.strictEqual(fresh(m).shopProblem('fern'), '', m);
+  assert.match(fresh('primary').shopProblem('fern'), /No heroes in Primary Only mode/);
   const E = fresh();
   assert.deepStrictEqual([...E.HERO_IDS].map(id => E.price(E.TD[id].cost, id)), [540, 725, 700, 650]);
   const fern = place(E, 'fern');
@@ -276,9 +276,9 @@ test('Willow: sparks jump, roots and grove slow, Tesla gets help', () => {
   assert.strictEqual(E.heroSlow(spawn(E, 'blue', 100)), 1);
 });
 
-test('a Heroes game saves as v5 and resumes with the hero, its level and cooldowns', () => {
+test('a game with a hero saves as v5 and resumes with the hero, its level and cooldowns', () => {
   const storage = fakeStorage();
-  const E = fresh('hero', { storageObj: storage });
+  const E = fresh('standard', { storageObj: storage });
   const t = place(E, 'willow');
   setLevel(E, t, 10);
   E.game.heroId = 'willow';
@@ -288,22 +288,31 @@ test('a Heroes game saves as v5 and resumes with the hero, its level and cooldow
   const snap = E.savedRun();
   assert.strictEqual(snap.v, 5);
   const F = loadEngine({ storageObj: storage });
-  F.createGame({ mapIdx: 0, diffKey: 'medium', mode: 'hero' }, F.savedRun());
+  F.createGame({ mapIdx: 0, diffKey: 'medium', mode: 'standard' }, F.savedRun());
   const h = F.heroTower();
   assert.deepStrictEqual([h.type, F.heroLevel(h), h.s.chains, F.heroCdLeft(1), F.game.heroId, F.game.heroBuff.grove], ['willow', 10, 5, 40, 'willow', 5]);
 });
 
-test('Standard saves stay v4, and a Heroes win gives no record, ranking or challenge star', () => {
+test('saves without a hero stay v4; a win with a hero counts like any other win', () => {
   const S = fresh('standard');
   S.snapshot();
   assert.strictEqual(S.savedRun().v, 4);
   const E = fresh();
   place(E, 'fern');
+  E.snapshot();
+  assert.strictEqual(E.savedRun().v, 5, 'a hero placed before round 1 is saved too');
   Object.assign(E.game, { round: E.game.diff.end, inRound: true });
   E.endRound();
   assert.ok(E.game.won);
-  assert.deepStrictEqual(Object.keys(E.records()), []);
-  assert.deepStrictEqual(Object.keys(E.runs()), []);
+  assert.ok(E.records()[E.game.map.id], 'the win is recorded');
+});
+
+test('an old save from the removed Heroes mode continues as Standard', () => {
+  const storage = fakeStorage();
+  const E = fresh('standard', { storageObj: storage });
+  E.snapshot();
+  const r = E.savedRun(); r.mode = 'hero'; E.store.set('run', r);
+  assert.strictEqual(E.savedRun().mode, 'standard');
 });
 
 test('each hero can fight real rounds without errors', () => {

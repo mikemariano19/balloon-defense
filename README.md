@@ -42,7 +42,7 @@ What's new in 5.0 (the News button on the home page lists every version):
 - Removed: Unlock All, Switch player, Add another player, Reset all progress.
 
 - 20 maps in 4 tiers, 4 difficulties (Easy 40 rounds and 150 lives, Medium 60 and 100, Hard 80 and 60, Nightmare 100 and 1), 4 challenge modes, daily challenge.
-- **Heroes** mode (unranked): one of four heroes who levels up as you clear rounds, with two abilities on Z and X
+- **Heroes**: four heroes above the towers, one per game in every mode except Primary Only. Placed like a tower, a hero levels up as you clear rounds, with two abilities on Z and X
   (`src/heroes.ts`, details in `docs/hero-preview.md`).
 - 9 towers, each with 3 upgrade paths of 5 tiers (135 upgrades): one path up to tier 5, a second up to tier 2. Tiers 3–5 unlock
   with that tower's XP; tower levels give skill points.
