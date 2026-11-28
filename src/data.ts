@@ -133,8 +133,8 @@ const PERKS = [
 ];
 /** The Gold Mine doesn't attack, so range, attack speed and pierce did nothing for it: it has its own skills. */
 const MINE_PERKS = [
-    { id: 'income', name: 'Income', per: '+3% income per round', max: 5 },
-    { id: 'vault', name: 'Vault size', per: '+10% vault cap', max: 5 },
+    { id: 'income', name: 'Income', per: '+3% gold every 10 s', max: 5 },
+    { id: 'vault', name: 'Vault size', per: '+10% interest cap', max: 5 },
     { id: 'cost', name: 'Discount', per: '−2% cost', max: 5 },
     { id: 'cd', name: 'Payday recharge', per: '+5% ability recharge', max: 4 }
 ];
@@ -489,28 +489,32 @@ const TD = {
                 { n: 'Bombard', c: 5500, d: '+3 damage, +20 blast, faster', a: s => { s.dmg += 3; s.blast += 20; s.rate *= 0.75; } },
                 { n: 'Armada Guns', c: 22000, d: 'Shells split into 8 mini-bombs, +4 damage', a: s => { s.cluster = 8; s.dmg += 4; } }]
         ] },
-    mine: { name: 'Gold Mine', cost: 900, size: 3, r: 27, color: '#ffb300', unlock: 6, support: true, desc: 'Doesn\'t attack. Earns cash at the end of every round.',
-        ability: { name: 'Payday', desc: 'Collect 1.5 rounds of this mine\'s income right now.', cd: 90 },
-        base: { income: 120, mode: 'mine', popBonus: 0, vault: 0, vaultCap: 1000, lives: 0 },
+    mine: { name: 'Gold Mine', cost: 1500, size: 3, r: 27, color: '#ffb300', unlock: 6, support: true, desc: 'Doesn\'t attack. Earns gold every 10 seconds while a round is being played.',
+        ability: { name: 'Payday', desc: 'Collect 50 seconds of this mine\'s gold right now (80 seconds once stronger).', cd: 90 },
+        base: { income: 40, mode: 'mine', popBonus: 0, vault: 0, vaultCap: 350, lives: 0 },
         paths: [
-            [{ n: 'Richer Vein', c: 500, d: '+$80 per round', a: s => { s.income += 80; } },
-                { n: 'Deep Shaft', c: 1200, d: '+$150 per round', a: s => { s.income += 150; } },
-                { n: 'Mother Lode', c: 4000, d: '+$500 per round', a: s => { s.income += 500; } },
-                { n: 'Gold Rush', c: 10000, d: '+$1,500 per round', a: s => { s.income += 1500; } },
-                { n: 'Bullion Empire', c: 35000, d: '+$4,000 per round', a: s => { s.income += 4000; } }],
-            [{ n: 'Pop Bonus', c: 600, d: '+10% cash from pops (all mines max +30%)', a: s => { s.popBonus = 0.1; } },
-                { n: 'Bigger Carts', c: 900, d: '+$100 per round', a: s => { s.income += 100; } },
-                { n: 'Bank Vault', c: 3000, d: 'Earns 8% interest on your cash each round (max $1,000)', a: s => { s.vault = 0.08; } },
-                { n: 'Investment Bank', c: 8000, d: '12% interest (max $2,500)', a: s => { s.vault = 0.12; s.vaultCap = 2500; } },
-                { n: 'Central Bank', c: 28000, d: '15% interest (max $6,000), +$500 per round', a: s => { s.vault = 0.15; s.vaultCap = 6000; s.income += 500; } }],
-            [{ n: 'Shiny Nuggets', c: 350, d: '+$40 per round', a: s => { s.income += 40; } },
-                { n: 'Prospector', c: 800, d: '+$60 per round', a: s => { s.income += 60; } },
-                { n: 'Gem Cutter', c: 2600, d: 'Also gives 5 lives each round', a: s => { s.lives += 5; } },
-                { n: 'Rescue Fund', c: 6500, d: '+15 lives and +$200 per round', a: s => { s.lives += 15; s.income += 200; } },
-                { n: 'Golden Heart', c: 24000, d: '+40 lives and +$800 per round', a: s => { s.lives += 40; s.income += 800; } }]
+            [{ n: 'Richer Vein', c: 750, d: '+$25 every 10 s', a: s => { s.income += 25; } },
+                { n: 'Deep Shaft', c: 1800, d: '+$50 every 10 s', a: s => { s.income += 50; } },
+                { n: 'Mother Lode', c: 6000, d: '+$170 every 10 s', a: s => { s.income += 170; } },
+                { n: 'Gold Rush', c: 15000, d: '+$500 every 10 s', a: s => { s.income += 500; } },
+                { n: 'Bullion Empire', c: 52500, d: '+$1,350 every 10 s', a: s => { s.income += 1350; } }],
+            [{ n: 'Pop Bonus', c: 900, d: '+10% cash from pops (all mines max +30%)', a: s => { s.popBonus = 0.1; } },
+                { n: 'Bigger Carts', c: 1350, d: '+$35 every 10 s', a: s => { s.income += 35; } },
+                { n: 'Bank Vault', c: 4500, d: 'Earns 3% interest on your cash every 10 s (max $350)', a: s => { s.vault = 0.03; } },
+                { n: 'Investment Bank', c: 12000, d: '4% interest (max $850)', a: s => { s.vault = 0.04; s.vaultCap = 850; } },
+                { n: 'Central Bank', c: 42000, d: '5% interest (max $2,000), +$170 every 10 s', a: s => { s.vault = 0.05; s.vaultCap = 2000; s.income += 170; } }],
+            [{ n: 'Shiny Nuggets', c: 525, d: '+$15 every 10 s', a: s => { s.income += 15; } },
+                { n: 'Prospector', c: 1200, d: '+$20 every 10 s', a: s => { s.income += 20; } },
+                { n: 'Gem Cutter', c: 3900, d: 'Also gives 5 lives each round', a: s => { s.lives += 5; } },
+                { n: 'Rescue Fund', c: 9750, d: '+15 lives per round and +$70 every 10 s', a: s => { s.lives += 15; s.income += 70; } },
+                { n: 'Golden Heart', c: 36000, d: '+40 lives per round and +$270 every 10 s', a: s => { s.lives += 40; s.income += 270; } }]
         ] }
 };
 const SHOP = ['dart', 'tack', 'bomb', 'sniper', 'frost', 'signal', 'tesla', 'boat', 'mine'];
+/* Gold Mines pay every MINE_PAY_TIME seconds of a round. They stop MINE_GRACE seconds after the round's last balloon
+   has come out, so a round held open (balloons kept frozen) can't be farmed. Payday collects MINE_PAYDAY[power - 1]
+   payouts at once. */
+const MINE_PAY_TIME = 10, MINE_GRACE = 120, MINE_PAYDAY = [5, 8];
 const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 /** Release notes, newest first (the News panel on the home page). */
 const NEWS = [
@@ -628,7 +632,8 @@ const WB_MAPS: any[] = [
 ];
 /* 5.2: a World Boss fight is played in rounds, like a normal game, from round 1. Tier n comes at the start of round
    WB_TIER_ROUNDS[n - 1] (40, 60, 80, 100, 120), but never before tier n - 1 is popped. Rounds keep going while a boss
-   is out, and every round pays (round bonus, Gold Mine income). All five must be popped before round WB_LAST_ROUND (140).
+   is out, and every round pays its round bonus (Gold Mines pay every 10 seconds). All five must be popped before round
+   WB_LAST_ROUND (140).
    Tier HP is a share of the boss's HP (master control): 10,000 / 20,000 / 30,000 / 40,000 / 50,000 by default. Each tier
    also walks a little faster and has more skulls: when its health drops past a skull it uses its skill, and at the
    last (flaming) skull it gets angry (faster, summons more often).

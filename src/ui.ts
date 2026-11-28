@@ -411,7 +411,7 @@ $('abilBtn').addEventListener('click', toggleTray);
 /* ---------- Stats helpers ---------- */
 function statRows(type, s) {
     if (s.mode === 'mine')
-        return [['Income', money(s.income) + '/round'], ['Pop bonus', s.popBonus ? '+' + Math.round(s.popBonus * 100) + '%' : '—'], ['Interest', s.vault ? Math.round(s.vault * 100) + '%' : '—'], ['Lives', s.lives ? '+' + s.lives + '/round' : '—']];
+        return [['Income', money(s.income) + '/' + MINE_PAY_TIME + 's'], ['Pop bonus', s.popBonus ? '+' + Math.round(s.popBonus * 100) + '%' : '—'], ['Interest', s.vault ? Math.round(s.vault * 100) + '%/' + MINE_PAY_TIME + 's' : '—'], ['Lives', s.lives ? '+' + s.lives + '/round' : '—']];
     if (s.mode === 'aura')
         return [['Aura', s.aura], ['Speed', s.buffRate ? '+' + Math.round(s.buffRate * 100) + '%' : '—'], ['Range', s.buffRange ? '+' + Math.round(s.buffRange * 100) + '%' : '—'],
             ['Damage', s.buffDmg ? '+' + s.buffDmg : '—'], ['Pierce', s.buffPierce ? '+' + s.buffPierce : '—'], ['Camo', s.buffCamo ? 'Yes' : '—']];
@@ -476,7 +476,7 @@ function deltas(a, b) {
     if (b.bolts !== a.bolts)
         out.push(b.bolts + ' bolts');
     if (b.income !== a.income)
-        out.push('+' + money(b.income - a.income) + '/rd');
+        out.push('+' + money(b.income - a.income) + (b.mode === 'mine' ? '/' + MINE_PAY_TIME + 's' : '/rd'));
     if (b.freeze !== a.freeze)
         out.push('Freeze +' + (b.freeze - a.freeze).toFixed(1) + 's');
     if (b.aura !== a.aura)
@@ -2416,7 +2416,7 @@ function wbInfoHTML() {
       <li>It is fought twice, both days from <b>7:30 AM to 5:00 PM Philippine time</b>: <b>Normal on Thursday</b> and <b>Elite on Friday</b>. Each day has its own Top 5 board. A run still going at 5:00 PM ends, and its damage counts.</li>
       <li>At <b>5:01 PM on Friday</b> the <b>World Boss Champion</b> is announced to every player, even in the middle of a game (it pauses): #1 on the Elite board (or on the Normal board if nobody played Elite). Everyone also gets a notification with the top 3.</li>
       <li>You start with the boss's lives (<b>${p.boss.lives.toLocaleString()}</b> this week) and its start money. Press <b>PLAY</b> to start round 1.</li>
-      <li>It is played in <b>rounds</b>, like a normal game. The next round starts by itself as soon as this round's balloons are popped (or after ${WB_ROUND_MAX} seconds), and <b>rounds keep going while a boss is out</b>. Every round pays its round bonus and Gold Mine income, so farms keep making money.</li>
+      <li>It is played in <b>rounds</b>, like a normal game. The next round starts by itself as soon as this round's balloons are popped (or after ${WB_ROUND_MAX} seconds), and <b>rounds keep going while a boss is out</b>. Every round pays its round bonus and Gold Mines pay every ${MINE_PAY_TIME} seconds, so farms keep making money.</li>
       <li>The boss comes in <b>${WB_TIERS.length} tiers</b>, one every 20 rounds: on <b>rounds ${WB_TIERS_TXT()}</b>. A tier only comes once the one before it is popped. <b>Pop all ${WB_TIERS.length} before round ${WB_LAST_ROUND}</b> to win. The stars on the boss bar show its tier.</li>
       <li>Each tier walks the road very slowly towards the <b>END</b>, and stands still for a moment every time it summons. If it gets there, <b>the run is over</b>. Later tiers have more HP and walk a little faster. Tier HP this week, Normal: <b>${tierHp(false)}</b>. Elite: <b>${tierHp(true)}</b>, and it walks 15% faster.</li>
       <li><b>Skulls</b> on its health bar: when its health drops past one it uses its skill (this week: <b>${esc(WB_SKILLS[p.boss.skill] || '')}</b>). At the last, flaming skull it gets <b>angry</b>: 25% faster, and it summons more often. Elite has one more skull on every tier.</li>

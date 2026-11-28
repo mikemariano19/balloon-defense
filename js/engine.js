@@ -470,7 +470,7 @@ function createGame(cfg, snap) {
             const lv = s.lv.slice();
             while (lv.length < 3)
                 lv.push(0); // v3 saves had 2 paths
-            Object.assign(t, { lv, spent: s.spent, fresh: s.fresh || 0, pops: s.pops || 0, xpPops: s.xpPops || 0, target: s.target || 'first', ang: s.ang || -Math.PI / 2, cd: s.cd || 0 });
+            Object.assign(t, { lv, spent: s.spent, fresh: s.fresh || 0, pops: s.pops || 0, xpPops: s.xpPops || 0, target: s.target || 'first', ang: s.ang || -Math.PI / 2, cd: s.cd || 0, payT: s.payT || 0 });
             t.aim = t.ang;
             game.towers.push(t);
             if (s.abCd > (game.abCd[s.type] || 0))
@@ -482,7 +482,8 @@ function createGame(cfg, snap) {
         recalcAll();
         if (snap.inRound) {
             game.hpMult = hpMultFor(game.round);
-            Object.assign(game, { inRound: true, roundTime: snap.roundTime, spawned: snap.spawned, roundTotal: snap.roundTotal, roundPops: snap.roundPops || 0, spawnQ: snap.spawnQ || [] });
+            Object.assign(game, { inRound: true, roundTime: snap.roundTime, spawned: snap.spawned, roundTotal: snap.roundTotal, roundPops: snap.roundPops || 0, spawnQ: snap.spawnQ || [],
+                quietT: snap.quietT || 0 });
             for (const s of snap.balloons || []) {
                 const b = makeBalloon(s.type, s.dist, { camo: s.camo, lineage: s.lineage, pi: s.pi, regrow: s.regrow, fort: s.fort });
                 Object.assign(b, { hp: s.hp, maxHp: s.maxHp, frozen: s.frozen || 0, slow: s.slow || 0, regTop: s.regTop ?? b.regTop, bossStage: s.bossStage || 0, spdMul: s.spdMul || 1 });
@@ -503,9 +504,9 @@ function snapshot() {
         return; // a World Boss run isn't saved half-way: its damage is recorded as it goes (wbRecord)
     store.set('run', { v: 4, mapId: g.map.id, diffKey: g.diffKey, mode: g.mode, daily: g.daily, round: g.round, lives: g.lives, cash: Math.floor(g.cash), won: g.won, pops: g.pops, time: g.time,
         clock: g.clock, leaked: g.leaked, ua: g.ua, cleared: g.cleared, submitted: g.submitted,
-        towers: g.towers.map(t => ({ type: t.type, x: t.x, y: t.y, lv: t.lv, spent: t.spent, fresh: t.fresh, pops: t.pops, xpPops: t.xpPops, target: t.target, ang: t.ang, cd: t.cd })),
+        towers: g.towers.map(t => ({ type: t.type, x: t.x, y: t.y, lv: t.lv, spent: t.spent, fresh: t.fresh, pops: t.pops, xpPops: t.xpPops, target: t.target, ang: t.ang, cd: t.cd, payT: t.payT })),
         abCd: g.abCd, abMax: g.abMax,
-        inRound: g.inRound, roundTime: g.roundTime, spawned: g.spawned, roundTotal: g.roundTotal, roundPops: g.roundPops,
+        inRound: g.inRound, roundTime: g.roundTime, spawned: g.spawned, roundTotal: g.roundTotal, roundPops: g.roundPops, quietT: g.quietT,
         spawnQ: g.inRound ? g.spawnQ : [],
         balloons: g.inRound ? g.balloons.filter(b => !b.dead).map(b => ({ type: b.type, hp: b.hp, maxHp: b.maxHp, dist: b.dist, camo: b.camo, lineage: b.lineage, pi: b.pi,
             frozen: b.frozen, slow: b.slow, regrow: b.regrow, regTop: b.regTop, fort: b.fort, bossStage: b.bossStage, spdMul: b.spdMul })) : [],
@@ -757,9 +758,9 @@ function bossCheck(b) {
 function leakValue(b) { return BT[b.type].boss ? Math.ceil(b.hp) : Math.ceil(b.hp) + BT[b.type].kids.reduce((s, k) => s + RBE[k], 0); }
 /* ---------- World Boss run (5.2: rounds, five tiers, a road with an END) ----------
    PLAY starts round 1. Rounds go on by themselves: the next one starts WB_ROUND_GAP seconds after this one's balloons
-   are all popped, or after WB_ROUND_MAX seconds. Every round pays like a normal round (round bonus, Gold Mine income
-   and lives, XP). Tier n comes at the start of round WB_TIER_ROUNDS[n - 1] (40, 60, 80, 100, 120), but only once tier
-   n - 1 is popped. The boss walks the road very slowly (wbWalkTime) and stops to summon balloons on a timer that speeds
+   are all popped, or after WB_ROUND_MAX seconds. Every round pays like a normal round (round bonus, income towers,
+   Gold Mine lives, XP; Gold Mine cash comes every MINE_PAY_TIME seconds). Tier n comes at the start of round
+   WB_TIER_ROUNDS[n - 1] (40, 60, 80, 100, 120), but only once tier n - 1 is popped.The boss walks the road very slowly (wbWalkTime) and stops to summon balloons on a timer that speeds
    up (wbSummonGap); its balloons get 1% stronger every minute (wbStrength) and take lives when they get through. When
    its health drops past a skull it uses its skill (WB_SKILLS); at the last skull it gets angry. The boss can't be
    frozen, stunned or slowed. The run ends when all five tiers are popped (a win), the boss reaches the END, lives reach
@@ -901,17 +902,14 @@ function wbSummon(b, type = wbMob(game.wb.t), count = game.wb.boss.count) {
     g.hpMult = hm;
     addFx({ k: 'ring', x: b.x, y: b.y, r: BT[b.type].r * 1.1, col: '#ce93d8', life: .5, fill: true });
 }
-/** The end of every round: the round bonus, Gold Mine income and lives, player XP and tower XP. */
+/** The end of every round: the round bonus, tower income, Gold Mine lives, player XP and tower XP. */
 function wbPayday() {
     const g = game, bonus = Math.round(roundBonus(g.round) * wbGold());
     let income = bonus, lives = 0;
     g.cash += bonus;
     for (const t of g.towers) {
-        if (t.s.income > 0) {
-            let inc = t.s.income;
-            if (t.s.vault)
-                inc += Math.min(t.s.vaultCap || 1000, Math.floor(g.cash * t.s.vault));
-            inc = Math.round(inc * wbGold());
+        if (t.s.income > 0 && t.type !== 'mine') {
+            const inc = Math.round(t.s.income * wbGold());
             income += inc;
             g.cash += inc;
             addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + inc, col: '#ffd93d', life: 1.5 });
@@ -1032,6 +1030,7 @@ function startRound() {
     g.spawned = 0;
     g.roundPops = 0;
     g.roundTime = 0;
+    g.quietT = 0;
     g.inRound = true;
     g.autoT = -1;
     g.saveT = 0;
@@ -1063,10 +1062,8 @@ function endRound() {
     let income = 0, lives = 0;
     g.cash += bonus;
     for (const t of g.towers) {
-        if (t.s.income > 0) {
-            let inc = t.s.income;
-            if (t.s.vault)
-                inc += Math.min(t.s.vaultCap || 1000, Math.floor(g.cash * t.s.vault));
+        if (t.s.income > 0 && t.type !== 'mine') {
+            const inc = t.s.income;
             income += inc;
             g.cash += inc;
             addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + inc, col: '#ffd93d', life: 1.5 });
@@ -1129,9 +1126,37 @@ function endRound() {
             g.autoT = 1.0;
     }
 }
+/* ---------- Gold Mines ---------- */
+/** One payout: the mine's gold plus its interest on the cash held. */
+function minePay(t) {
+    const g = game;
+    let inc = t.s.income;
+    if (t.s.vault)
+        inc += Math.min(t.s.vaultCap, Math.floor(g.cash * t.s.vault));
+    inc = Math.round(inc * wbGold());
+    g.cash += inc;
+    addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + inc, col: '#ffd93d', life: 1.5 });
+}
+/** Runs only during a round (game time, so pause stops it and fast forward speeds it up). Each mine keeps its own
+    timer, which carries over to the next round. Payouts stop MINE_GRACE seconds after the last balloon came out. */
+function mineTick(dt) {
+    const g = game;
+    g.quietT = g.spawnQ.length ? 0 : (g.quietT || 0) + dt;
+    if (g.quietT > MINE_GRACE)
+        return;
+    for (const t of g.towers) {
+        if (t.type !== 'mine')
+            continue;
+        t.payT += dt;
+        if (t.payT >= MINE_PAY_TIME) {
+            t.payT -= MINE_PAY_TIME;
+            minePay(t);
+        }
+    }
+}
 /* ---------- Towers ---------- */
 function newTower(type, x, y) {
-    return { id: nextId++, type, x, y, lv: [0, 0, 0], spent: 0, fresh: 0, cd: 0, ang: -Math.PI / 2, aim: -Math.PI / 2, pops: 0, xpPops: 0, target: 'first', s: null,
+    return { id: nextId++, type, x, y, lv: [0, 0, 0], spent: 0, fresh: 0, cd: 0, payT: 0, ang: -Math.PI / 2, aim: -Math.PI / 2, pops: 0, xpPops: 0, target: 'first', s: null,
         boostT: 0, boostMul: 1, boostChains: 0, kick: 0, buffed: false, blk: [] };
 }
 function statsFor(type, lv, perks) {
@@ -1593,7 +1618,7 @@ function useAbility(t) {
             fire(t, t.s, 0, true, pw === 2 ? 40 : 24);
             break;
         case 'mine': {
-            const v = Math.round(t.s.income * (pw === 2 ? 2.5 : 1.5));
+            const v = Math.round(t.s.income * MINE_PAYDAY[pw - 1] * wbGold());
             g.cash += v;
             addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + v, col: '#ffd93d', life: 1.5, big: true });
             break;
@@ -1664,6 +1689,7 @@ function update(dt) {
             if (BT[s.type].boss)
                 onBoss(b);
         }
+        mineTick(dt);
         if (g.saveT >= 5) {
             g.saveT = 0;
             if (g.wb)
