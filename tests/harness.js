@@ -35,7 +35,7 @@ function loadEngine(opts = {}) {
   if (opts.storage !== false) ctx.localStorage = opts.storageObj || fakeStorage();
   Object.assign(ctx, { setTimeout: () => 0, clearTimeout: () => {}, URL });
   vm.createContext(ctx);
-  const code = ['data.js', 'engine.js', 'profile.js', 'share.js', 'worldboss.js', 'chat.js'].map(f => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')).join('\n;\n')
+  const code = ['data.js', 'heroes.js', 'engine.js', 'profile.js', 'share.js', 'worldboss.js', 'chat.js'].map(f => fs.readFileSync(path.join(ROOT, 'js', f), 'utf8')).join('\n;\n')
     // same behaviour as ui.js onGameOver, minus the DOM
     + '\n;function onGameOver() { if (game.wb) { wbEnd(false); return; } game.over = true; game.inRound = false; saveRecord(); submitRun(); clearRun(); log.push({ ev: "gameover" }); }';
   vm.runInContext(code, ctx, { filename: 'engine-bundle.js' });

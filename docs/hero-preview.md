@@ -1,13 +1,23 @@
 # Hero preview: original heroes for Balloon Defense
 
-Draft by Ivy, 2026-11-28. A design proposal only: no hero exists in the game and none of these numbers are tested.
-Roles are loosely based on four BTD6 heroes (see `hero-review.md`). Names and ability names are new; they were not
-checked for trademarks.
+By Ivy, 2026-11-28. All four heroes are now in the game (branch `agent/ivy`, **Heroes** mode on any map) for review.
+The abilities have automated tests, but the balance is untested. Roles are loosely based on four BTD6 heroes (see
+`hero-review.md`). Names and ability names are new; they were not checked for trademarks.
 
-## Shared rules (proposed)
+## Choices made while building (change any of these)
 
-- One hero per game, in a new unranked Hero mode.
-- Levels 1-10, earned during the game. The XP curve is not designed yet.
+- Hero XP: 10 + 2 x round for each round finished on the field. From round 1 that is level 3 after round 5 and level 10
+  after round 32. The table is `HERO_XP` in `src/heroes.ts`.
+- Once a hero has fought a round, you can't switch to another one. Selling loses its levels; ability recharges stay.
+- Signal Towers buff heroes like any other tower.
+- Spark Bottle lands on the furthest-along balloon in range. Dazer Shell follows the hero's targeting setting.
+- Crew Drill and Reload Order apply to bomb towers anywhere on the map.
+- Heroes games are not ranked and give no challenge star or bonus. Player XP and tower XP are still earned.
+
+## Shared rules
+
+- One hero per game, in the unranked Heroes mode.
+- Levels 1-10, earned during the game.
 - First ability unlocks at level 3 (key **Z**), second at level 10 (key **X**).
 - Prices are for Medium; other difficulties use the normal price multiplier.
 - Ranges are in px, times in seconds.

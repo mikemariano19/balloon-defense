@@ -261,7 +261,39 @@ function drawPathMarks(c, x, y, R, lv, time, k) {
     }
     c.restore();
 }
+/** A hero: its head on a gold-ringed disc, always upright, with its level in the corner once it is on the map. */
+function drawHero(c, type, x, y, scale, time, t) {
+    const d = TD[type], R = d.r * (scale || 1);
+    if (t && (t.boostT > 0 || t.splitT > 0)) {
+        c.save();
+        c.globalAlpha = .5 + Math.sin(time * 12) * .2;
+        disc(c, x, y, R + 9, '#ffb74d');
+        c.restore();
+    }
+    disc(c, x, y, R + 2, '#ffd93d', 'rgba(0,0,0,.45)', 1.5);
+    disc(c, x, y, R - 1.5, HEROES[type].color);
+    if (!drawSpr(c, 'heroes/' + type, x, y, R * 2.4 / 64)) {
+        c.fillStyle = '#fff';
+        c.font = '900 ' + Math.round(R) + 'px "Segoe UI", system-ui, sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+        c.fillText(HEROES[type].name[0], x, y);
+        c.textBaseline = 'alphabetic';
+    }
+    if (!t)
+        return;
+    if (t.buffed) { // inside a Signal Tower's aura
+        disc(c, x + R - 1, y - R + 1, 5, '#26a69a', '#e0f2f1', 1);
+    }
+    disc(c, x + R - 2, y + R - 2, 8, '#20301c', '#fff', 1.5);
+    c.fillStyle = '#fff';
+    c.font = '900 10px "Segoe UI", system-ui, sans-serif';
+    c.textAlign = 'center';
+    c.fillText(String(heroLevel(t)), x + R - 2, y + R + 1.5);
+}
 function drawTower(c, type, x, y, ang, lv, time, scale, kick, t) {
+    if (TD[type].hero)
+        return drawHero(c, type, x, y, scale, time, t);
     const d = TD[type], mt = maxTier(lv), big = mt >= 5 ? 1.18 : mt >= 4 ? 1.12 : mt >= 3 ? 1.06 : 1, s = (d.r / 22) * (scale || 1) * big, R = d.r * (scale || 1) * big;
     const topPath = lv ? [0, 1, 2].reduce((a, p) => lv[p] > lv[a] ? p : a, 0) : 0;
     if (type === 'boat')
@@ -458,8 +490,8 @@ function drawBalloon(c, b, time) {
             c.fill();
         }
     }
-    else if (b.slow > 0 || b.slowT > 0) {
-        c.strokeStyle = 'rgba(129,212,250,.85)';
+    else if (b.slow > 0 || b.slowT > 0 || b.rootT > 0) {
+        c.strokeStyle = b.rootT > 0 ? 'rgba(139,195,74,.95)' : 'rgba(129,212,250,.85)'; // green: Tangle Roots
         c.lineWidth = 2;
         c.beginPath();
         c.arc(x, y, d.r + 3, 0, TAU);
@@ -849,7 +881,11 @@ function trail(c, p, len, col, w) {
 /** Projectiles are drawn 1.5x bigger than their art with a dark outline, so they show on every ground. */
 const PROJ_SCALE = 1.5;
 function drawProj(c, p) {
-    if (p.kind === 'dart' || p.kind === 'bolt' || p.kind === 'tack' || p.kind === 'mini' || p.kind === 'cannonball') {
+    if (p.kind === 'ember' && hiFx())
+        trail(c, p, 22, 'rgba(255,112,67,.85)', 7);
+    if (p.burst && hiFx()) // a Burst Tip arrow glows
+        trail(c, p, 34, 'rgba(255,167,38,.9)', 7);
+    if (p.kind === 'dart' || p.kind === 'arrow' || p.kind === 'bolt' || p.kind === 'tack' || p.kind === 'mini' || p.kind === 'cannonball') {
         const len = p.kind === 'bolt' ? 30 : p.kind === 'cannonball' ? 16 : 20;
         if (hiFx())
             trail(c, p, len, 'rgba(255,255,255,.85)', p.kind === 'bolt' ? 4.5 : 3.5);
@@ -893,6 +929,28 @@ function drawProj(c, p) {
             c.lineTo(8, 0);
             c.lineTo(2, 2.2);
             c.fill();
+            break;
+        case 'arrow':
+            c.rotate(p.a);
+            c.fillStyle = '#8a5a2b';
+            c.fillRect(-9, -.9, 13, 1.8);
+            c.fillStyle = '#d9483b';
+            c.beginPath();
+            c.moveTo(-6, 0);
+            c.lineTo(-11, -3.4);
+            c.lineTo(-9, 0);
+            c.lineTo(-11, 3.4);
+            c.fill();
+            c.fillStyle = '#eceff1';
+            c.beginPath();
+            c.moveTo(3, -2.6);
+            c.lineTo(9, 0);
+            c.lineTo(3, 2.6);
+            c.fill();
+            break;
+        case 'ember':
+            disc(c, 0, 0, 5, '#ff7043');
+            disc(c, 0, 0, 2.6, '#ffeb3b');
             break;
         case 'bolt':
             c.rotate(p.a);
@@ -1188,14 +1246,14 @@ function drawFx(c, f) {
             };
             c.lineJoin = 'round';
             if (hiFx()) {
-                c.strokeStyle = 'rgba(179,136,255,.45)';
+                c.strokeStyle = f.col ? 'rgba(255,242,122,.4)' : 'rgba(179,136,255,.45)'; // f.col: firefly sparks
                 c.lineWidth = 7;
                 path();
                 c.stroke();
             }
-            c.strokeStyle = '#ede7f6';
+            c.strokeStyle = f.col || '#ede7f6';
             c.lineWidth = 2.2;
-            c.shadowColor = '#b388ff';
+            c.shadowColor = f.col || '#b388ff';
             c.shadowBlur = 10;
             path();
             c.stroke();
@@ -1210,6 +1268,18 @@ function drawFx(c, f) {
             c.strokeText(f.txt, f.x, f.y - ease(k) * 18);
             c.fillText(f.txt, f.x, f.y - ease(k) * 18);
             break;
+        case 'arrows': { // one wave of Arrow Rain
+            c.strokeStyle = '#fff3e0';
+            c.lineWidth = 2.5;
+            c.beginPath();
+            for (let i = 0; i < 24; i++) {
+                const an = i * 2.4, rr = f.r * Math.sqrt((i + .5) / 24), x = f.x + Math.cos(an) * rr, y = f.y + Math.sin(an) * rr - (1 - ease(k)) * 40;
+                c.moveTo(x + 5, y - 16);
+                c.lineTo(x, y);
+            }
+            c.stroke();
+            break;
+        }
         case 'screen':
             c.fillStyle = f.col;
             c.fillRect(0, 0, W, H);
@@ -1225,6 +1295,37 @@ function drawFx(c, f) {
             break;
     }
     c.restore();
+}
+/* ---------- Hero ability effects that stay on the field (g.heroFx) ---------- */
+function drawHeroGround(c, time) {
+    for (const e of game.heroFx) {
+        if (e.k === 'rain') { // the spot Arrow Rain is falling on
+            drawRange(c, e.x, e.y, e.r, 'preview');
+        }
+        else if (e.k === 'patch') {
+            c.save();
+            c.globalAlpha = Math.min(1, e.left);
+            disc(c, e.x, e.y, e.r, 'rgba(255,112,67,.4)');
+            for (let i = 0; i < 9; i++) {
+                const a = i * 2.4, rr = e.r * .8 * Math.sqrt((i + .5) / 9), h = 6 + 3 * Math.sin(time * 11 + i * 1.7);
+                const x = e.x + Math.cos(a) * rr, y = e.y + Math.sin(a) * rr;
+                disc(c, x, y, h, 'rgba(255,87,34,.7)');
+                disc(c, x, y - 2, h * .5, 'rgba(255,235,59,.9)');
+            }
+            c.restore();
+        }
+    }
+}
+function drawHeroShots(c) {
+    for (const e of game.heroFx)
+        if (e.k === 'dazer') {
+            disc(c, e.x, e.y, 9, '#c9922f', '#3e2723', 2);
+            disc(c, e.x - 2, e.y - 2, 3, '#fff8e1');
+        }
+    if (game.heroBuff.grove > 0) { // Great Grove: a soft green cast over the field
+        c.fillStyle = 'rgba(139,195,74,.12)';
+        c.fillRect(0, 0, W, H);
+    }
 }
 /* ---------- Ranges, sight shadows, placement grid ---------- */
 function drawRange(c, x, y, r, mode) {
@@ -1422,6 +1523,7 @@ function render(c, ui) {
     for (const f of g.fx)
         if (GROUND_FX[f.k])
             drawGroundFx(c, f);
+    drawHeroGround(c, g.time);
     if (g.round === 0 && !g.inRound)
         drawRouteHint(c, g.time);
     VIEW.gridA = clamp(VIEW.gridA + (ui.shop ? 1 : -1) * dt / 0.12, 0, 1);
@@ -1483,6 +1585,9 @@ function render(c, ui) {
             drawBalloon(c, b, g.time);
     for (const p of g.projs)
         drawProj(c, p);
+    drawHeroShots(c);
+    if (ui.aim != null && ui.mouse.in) // aiming Arrow Rain: the area it would hit
+        drawRange(c, ui.mouse.x, ui.mouse.y, HEROES[heroTower()?.type]?.abilities[ui.aim].aim || 0, 'preview');
     for (const f of g.fx)
         if (!GROUND_FX[f.k])
             drawFx(c, f);
