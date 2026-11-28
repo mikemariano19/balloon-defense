@@ -1,7 +1,7 @@
 "use strict";
 /* Balloon Defense — game data: maps, modes, difficulties, balloons, towers, rounds, titles, avatars.
    Edit these tables to rebalance the game; no other file needs to change. */
-const VERSION = '5.2.2';
+const VERSION = '5.3';
 const W = 960, H = 600, TAU = Math.PI * 2;
 /* ---------- Tile grid (40 x 25 tiles of 24 px) ---------- */
 const TILE = 24, COLS = W / TILE, ROWS = H / TILE;
@@ -521,6 +521,11 @@ const MINE_PAY_TIME = 10, MINE_GRACE = 120, MINE_PAYDAY = [5, 8];
 const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 /** Release notes, newest first (the News panel on the home page). */
 const NEWS = [
+    { v: '5.3', date: '2026-11-28', items: [
+            'New Heroes mode (unranked): pick one of four heroes, Fern Fletch, Ember Vale, Sergeant Flint or Willow Moss. Your hero levels up from 1 to 10 as you clear rounds, unlocks skills, and gets two abilities on Z (level 3) and X (level 10).',
+            'Gold Mine: now pays every 10 seconds while a round is being played, not once per round. It costs $1,500 (was $900) and its upgrades cost 50% more. Payday collects 5 payouts at once (8 when stronger).',
+            'Harder difficulties: Easy 150 lives (was 200), Medium 100 (was 150), Hard 60 (was 100). Balloon health starts ramping up after round 70 on Medium and Nightmare and after round 60 on Hard.'
+        ] },
     { v: '5.2.2', date: '2026-11-28', items: [
             'World Boss Champion: 10 exclusive card backgrounds (Royal Throne, Volcano Lair, Galaxy, Treasure Hoard, Aurora, Ocean Sunset, Cherry Blossom, Thunderstorm, Champion Arena, Balloon Sky). The Champion picks one in Edit profile; it shows behind their player card and profile card for 7 days.',
             'Shared folder: results, World Boss scores, logins and profile changes reach the other PCs in a few seconds.'
