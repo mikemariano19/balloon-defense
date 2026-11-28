@@ -85,10 +85,12 @@ function playBot(E, mapId, diffKey, mode = 'standard', opts = {}) {
   if (mapIdx < 0) throw new Error('unknown map ' + mapId);
   E.createGame({ mapIdx, diffKey, mode });
   const pts = samples(E);
+  if (opts.setup) opts.setup(E, pts);
   let pi = 0, li = 0;
   const g = () => E.game;
   while (!g().over && g().round < maxRounds && !(g().won && g().round >= g().diff.end)) {
     // spend money between rounds
+    if (opts.beforeSpend) opts.beforeSpend(E, pts);
     for (let guard = 0; guard < 40; guard++) {
       const a = pi < PLAN.length ? PLAN[pi] : LOOP[li % LOOP.length];
       if (!step(E, a, pts)) break;
@@ -105,4 +107,4 @@ function playBot(E, mapId, diffKey, mode = 'standard', opts = {}) {
   return { won: g().won, round: g().round, lives: g().lives, cash: Math.floor(g().cash), towers: g().towers.length, seconds: g().time };
 }
 
-module.exports = { playBot };
+module.exports = { playBot, bestSpot, samples };
