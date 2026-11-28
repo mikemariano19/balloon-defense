@@ -521,6 +521,7 @@ const PATH_COL = ['#4fc3f7', '#ffb74d', '#ba68c8'];
 const NEWS = [
     { v: '5.3', date: '2026-11-28', items: [
             'Heroes: Fern Fletch, Ember Vale, Sergeant Flint and Willow Moss are listed above the towers in every game (not Primary Only). Place one per game, like a tower; it levels up from 1 to 10 as you clear rounds, unlocks skills, and gets two abilities on Z (level 3) and X (level 10).',
+            'Upgrades: a new Heroes tab next to Towers. See each hero at any level: stats, the round each level comes, abilities and skills. Tab switches, arrows browse.',
             'Gold Mine: now pays every 10 seconds while a round is being played, not once per round. It costs $1,500 (was $900) and its upgrades cost 50% more. Payday collects 5 payouts at once (8 when stronger).',
             'Harder difficulties: Easy 150 lives (was 200), Medium 100 (was 150), Hard 60 (was 100). Balloon health starts ramping up after round 70 on Medium and Nightmare and after round 60 on Hard.'
         ] },

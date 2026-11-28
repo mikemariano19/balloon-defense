@@ -108,7 +108,8 @@ Prices are base prices, before the difficulty multiplier and discounts.
 | U4-7 | Signal Towers buff heroes like other towers. |
 | U4-8 | A game with a hero counts like any other game: records, rankings, challenge stars and XP. The hero itself earns no tower XP. |
 | U4-9 | A saved game keeps the hero, its level, cooldowns and running effects. A save with a hero (picked or on the field) is version 5; saves without one stay version 4. An old save from the removed Heroes mode continues as Standard. |
-| U4-10 | The hero panel shows portrait, level, XP, targeting, abilities, skills and Sell. |
+| U4-10 | The hero panel shows portrait, level, XP, targeting, abilities, skills, Sell and a Hero details button. |
+| U4-11 | The Upgrades screen has a Towers / Heroes switch (Tab key). The Heroes tab shows each hero's price, stats at any chosen level (gains marked ▲), a level track with the round each level is reached, both abilities and all skills. ← → browse heroes, 1–9 and 0 pick a level. A hero selected in a game opens its page at its current level. |
 
 ### 6.2 Heroes
 

@@ -3,7 +3,7 @@ const $ = (id: string): any => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 const UI: any = { shop: null, selected: null, selScenery: null, hoverTower: null, hoverScenery: null, previewRange: 0,
     mouse: { x: 0, y: 0, in: false }, speed: 1, paused: false, tier: 'beginner', menuMap: 0, menuDiff: 'medium', menuMode: 'standard',
-    modal: null, sellTarget: null, treeType: 'dart', treeSel: [0, 0], showInfo: false, cashShown: 0, draft: null, prevScreen: 'menu',
+    modal: null, sellTarget: null, treeType: 'dart', treeSel: [0, 0], treeKind: 'towers', heroType: 'fern', heroLv: 10, showInfo: false, cashShown: 0, draft: null, prevScreen: 'menu',
     aim: null }; // the hero ability slot waiting for a click on the map
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = (n) => '$' + Math.floor(n).toLocaleString();
@@ -759,7 +759,7 @@ function renderHeroPanel(el, t) {
     const hd = HEROES[t.type], lv = heroLevel(t), max = lv >= HERO_MAX_LEVEL, xp = t.heroXp || 0;
     const from = HERO_XP[lv], to = max ? from : HERO_XP[lv + 1], pct = max ? 100 : Math.round(100 * (xp - from) / (to - from));
     let h = `<div class="tp"><div class="tptop"><b>${hd.name}</b><span class="star" title="Pops">★ <b id="tpPops">${t.pops.toLocaleString()}</b></span>
-      <button class="i${UI.showInfo ? ' on' : ''}" data-act="info" title="Stats" style="margin-left:auto">i</button><button class="x" data-act="deselect" title="Close (Esc)">×</button></div>
+      <button class="tup" data-act="tree" title="Hero details: every level, ability and skill" style="margin-left:auto">${CHEVRON('u')}</button><button class="i${UI.showInfo ? ' on' : ''}" data-act="info" title="Stats">i</button><button class="x" data-act="deselect" title="Close (Esc)">×</button></div>
     <div class="tpport"><img class="heroport" src="assets/heroes/${t.type}-portrait.svg" alt=""><div class="tpside">
       <div class="lvtag">Hero level ${lv}${max ? ' (max)' : ''}</div><div class="hxp"><i style="width:${pct}%"></i></div>
       <div class="muted small">${max ? hd.role : (xp - from) + ' / ' + (to - from) + ' XP · +' + heroRoundXp(game.inRound ? game.round : game.round + 1) + ' after this round'}</div>
@@ -954,12 +954,12 @@ $('gSettings').addEventListener('click', () => { UI.paused = true; openSettings(
 $('gUpgrades').addEventListener('click', () => { if (game && !game.over) {
     UI.paused = true;
     snapshot();
-} openTree(UI.selected && !TD[UI.selected.type].hero ? UI.selected.type : UI.treeType, 'game'); });
+} openTree(UI.selected ? UI.selected.type : UI.treeKind === 'heroes' ? UI.heroType : UI.treeType, 'game'); });
 $('mHelp').addEventListener('click', openHelp);
 $('mSettings').addEventListener('click', () => openSettings());
 $('mStats').addEventListener('click', () => openProfileCard());
 $('profChip').addEventListener('click', () => openProfileCard());
-$('mUpgrades').addEventListener('click', () => loggedIn() ? openTree(UI.treeType, 'menu') : openLogin());
+$('mUpgrades').addEventListener('click', () => loggedIn() ? openTree(UI.treeKind === 'heroes' ? UI.heroType : UI.treeType, 'menu') : openLogin());
 /** Upgrade path 1 / 2 / 3 hotkeys. */
 const PATH_KEYS = ['A', 'S', 'D'];
 document.addEventListener('keydown', (e) => {
@@ -978,9 +978,17 @@ document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape')
             closeTree();
         else if (e.key === 'ArrowLeft')
-            treeStep(-1);
+            UI.treeKind === 'heroes' ? heroStep(-1) : treeStep(-1);
         else if (e.key === 'ArrowRight')
-            treeStep(1);
+            UI.treeKind === 'heroes' ? heroStep(1) : treeStep(1);
+        else if (e.key === 'Tab') {
+            e.preventDefault();
+            treeKind(UI.treeKind === 'heroes' ? 'towers' : 'heroes');
+        }
+        else if (UI.treeKind === 'heroes' && /^[0-9]$/.test(e.key)) {
+            UI.heroLv = +e.key || 10;
+            renderTree();
+        }
         return;
     }
     if (!inGame())
@@ -1209,7 +1217,7 @@ $('modal').addEventListener('click', (e) => {
         openSettings('backup');
     else if (a === 'upgrades') {
         closeModal();
-        openTree(UI.treeType, 'menu');
+        openTree(UI.treeKind === 'heroes' ? UI.heroType : UI.treeType, 'menu');
     }
     else
         playerAction(a, b);
@@ -1893,11 +1901,102 @@ function maybeWhatsNew() {
 }
 /* ---------- Upgrade tree screen ---------- */
 function openTree(type, from) {
-    UI.treeType = type || 'dart';
+    if (type && TD[type] && TD[type].hero) { // a hero opens the Heroes tab on that hero
+        UI.treeKind = 'heroes';
+        UI.heroType = type;
+        const on = from === 'game' && game && heroTower();
+        UI.heroLv = on && on.type === type ? heroLevel(on) : HERO_MAX_LEVEL; // the hero on the field opens at its level
+    }
+    else {
+        UI.treeKind = 'towers';
+        UI.treeType = type || 'dart';
+    }
     UI.prevScreen = from || 'menu';
     UI.treeSel = [0, 0];
     show('tree');
     renderTree();
+}
+/** The Towers | Heroes switch at the top of the Upgrades screen. */
+function treeKindHTML() {
+    const k = UI.treeKind;
+    return `<div class="tkind" role="tablist">
+      <button role="tab" class="${k === 'towers' ? 'on' : ''}" data-kind="towers" aria-selected="${k === 'towers'}"><canvas class="kicon" width="60" height="60"></canvas>Towers<small>XP unlocks · skill points</small></button>
+      <button role="tab" class="${k === 'heroes' ? 'on' : ''}" data-kind="heroes" aria-selected="${k === 'heroes'}"><img src="assets/heroes/${UI.heroType}-portrait.svg" alt="">Heroes<small>${HERO_IDS.length} heroes · details</small></button>
+      <span class="tkhint">Tab switches · ← → browse</span></div>`;
+}
+/** Draws the current tower on the Towers switch and wires both switch buttons. */
+function wireTreeKind() {
+    const c = $('tree').querySelector('.kicon');
+    if (c) {
+        const x = c.getContext('2d');
+        x.scale(2, 2);
+        drawTower(x, UI.treeType, 15, 15, -Math.PI / 4, null, 0, 12 / TD[UI.treeType].r);
+    }
+    $('tree').querySelectorAll('[data-kind]').forEach((b) => { b.onclick = () => treeKind(b.dataset.kind); });
+}
+function treeKind(kind) { UI.treeKind = kind; hideTip(); renderTree(); }
+/** Rounds a hero placed on round 1 needs to reach `level`. */
+function heroRoundsTo(level) { let xp = 0, r = 0; while (xp < HERO_XP[level]) { r++; xp += heroRoundXp(r); } return r; }
+/** The stat lines of a hero at a level, for the Heroes tab. */
+function heroStatRows(id, level) {
+    const s = heroStats(id, level), base = heroStats(id, 1), up = (k) => level > 1 && s[k] !== base[k] ? ' class="up"' : '';
+    const rows = [['Damage', s.dmg, 'dmg'], s.mode === 'chain' ? ['Jumps to', s.chains + ' balloons', 'chains'] : ['Pierce', s.pierce, 'pierce'],
+        ['Range', s.range + ' px', 'range'], ['Attack', 'every ' + s.rate + ' s', 'rate']];
+    if (s.count > 1 || base.count !== s.count) rows.push(['Shots', s.count + ' arrows', 'count']);
+    if (s.blast) rows.push(['Blast', s.blast + ' px', 'blast']);
+    if (s.burst) rows.push(['Burst', 'every 3rd shot', 'burst']);
+    rows.push(['Pops', s.mode === 'chain' ? 'everything, lead too' : s.dtype === 'sharp' ? 'not lead' : s.dtype === 'explosive' ? (s.crack ? 'everything' : 'not black or zebra') : 'everything, lead too', s.crack !== undefined ? 'crack' : 'dtype']);
+    rows.push(['Camo', s.camo ? 'Yes' : 'No', 'camo']);
+    if (s.bm > 1) rows.push(['Vs blimps', s.bm + 'x damage', 'bm']);
+    return rows.map(([k, v, key]) => `<div${up(key)}><span>${k}</span><b>${v}</b></div>`).join('');
+}
+function heroStep(d) { const i = HERO_IDS.indexOf(UI.heroType); UI.heroType = HERO_IDS[(i + d + HERO_IDS.length) % HERO_IDS.length]; renderTree(); }
+/** The Heroes tab: pick a hero, then read its stats at any level, its level track, abilities and skills. Heroes have no
+    XP to spend: they level up inside each game. */
+function renderHeroTree() {
+    const id = UI.heroType, h = HEROES[id], L = UI.heroLv, list = heroSkillList(id);
+    const at = (lv) => list.filter(x => x[0] === lv);
+    const inGameNow = game && !game.over && UI.prevScreen === 'game';
+    const allowedNow = inGameNow ? heroesAllowed() : true;
+    const tabs = HERO_IDS.map(k => `<button class="ttab hero${k === id ? ' on' : ''}" data-ht="${k}" title="${HEROES[k].name}" style="--hc:${HEROES[k].color}"><img src="assets/heroes/${k}-portrait.svg" alt="${HEROES[k].name}"></button>`).join('');
+    const track = Array.from({ length: HERO_MAX_LEVEL }, (_, i) => {
+        const lv = i + 1, here = at(lv), ab = here.find(x => x[3] >= 0), sk = here.find(x => x[3] < 0);
+        const st = lv <= L ? 'on' : '';
+        return `${i ? `<i class="hline${lv <= L ? ' on' : ''}"></i>` : ''}<button class="hlv ${st}${lv === L ? ' sel' : ''}${ab ? ' ab' : sk ? ' sk' : ''}" data-lv="${lv}" title="Level ${lv}${here.length ? ': ' + here.map(x => x[1]).join(', ') : ''}">
+          <b>${lv}</b>${ab ? `<kbd>${HERO_KEYS[ab[3]]}</kbd>` : sk ? '<em>★</em>' : ''}<small>${lv === 1 ? 'placed' : 'rd ' + heroRoundsTo(lv)}</small></button>`;
+    }).join('');
+    const abil = h.abilities.map((a, i) => {
+        const lv = HERO_ABILITY_LEVELS[i], open = L >= lv;
+        return `<div class="habil${open ? '' : ' locked'}"><div class="hakey"><kbd>${HERO_KEYS[i]}</kbd></div><div><b>${esc(a.name)}</b><span>Level ${lv} · ${a.cd} s recharge${a.aim ? ' · aim it' : ''}</span><p>${esc(a.desc)}</p></div></div>`;
+    }).join('');
+    const skills = h.skills.map(([lv, name, desc]) => `<li class="${lv > L ? 'locked' : ''}"><em>Lv ${lv}</em><span><b>${esc(name)}</b>${esc(desc)}</span></li>`).join('');
+    $('tree').innerHTML = `<div class="treehead hero" style="--hc:${h.color}"><button class="back" id="tBack" title="Back (Esc)"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M19.5 12H6M11.5 5.5 5 12l6.5 6.5" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Back</span></button>
+      <button class="arrow" id="tPrev" title="Previous hero (←)" aria-label="Previous hero">${CHEVRON('l')}</button><img class="hhead" src="assets/heroes/${id}-portrait.svg" alt="">
+      <div class="tname"><h2>${h.name}</h2><span>${esc(h.role)}</span></div>
+      <button class="arrow" id="tNext" title="Next hero (→)" aria-label="Next hero">${CHEVRON('r')}</button>
+      <div class="txpbox"><div class="txpnum"><img src="assets/ui/coin.svg" alt=""><b>${money(inGameNow ? price(h.cost, id) : h.cost)}</b>${inGameNow ? 'this game' : 'on Medium'}</div>
+        <small>One hero per game · levels 1–${HERO_MAX_LEVEL} as you clear rounds</small></div>
+</div>
+    ${treeKindHTML()}
+    <div class="ttabs">${tabs}</div>
+    <p class="tdesc">${esc(h.desc)} ${inGameNow ? (allowedNow ? 'Heroes are above the towers in this game.' : `No heroes in ${MODES[game.mode].name} mode.`) : 'In a game, heroes are listed above the towers (every mode except Primary Only).'}</p>
+    <div class="treebody">
+      <div class="treecard herocard" style="--pc:${h.color}"><img class="hbig" src="assets/heroes/${id}-portrait.svg" alt=""><h3>${h.name}</h3><div class="muted">Level <b>${L}</b> stats</div>${L > 1 ? '<div class="muted small"><span class="upk">▲</span> gained since level 1</div>' : ''}
+        <div class="hstats">${heroStatRows(id, L)}</div></div>
+      <div class="treegrid">
+        <h4 class="hsec">Level track <small>click a level to see the hero at that level · “rd” = round it is reached if placed on round 1</small></h4>
+        <div class="htrack">${track}</div>
+        <h4 class="hsec">Abilities</h4><div class="habils">${abil}</div>
+        <h4 class="hsec">Skills <small>always on once reached</small></h4><ul class="hskills big">${skills}</ul>
+        <div class="treenote">A hero earns 10 + 2 × round XP at the end of each round on the field. Selling it loses its levels.
+          Before it fights a round you can swap it for another hero; after that, only that hero for the rest of the game. Heroes need no XP or skill points here.</div></div>
+    </div>`;
+    $('tBack').onclick = closeTree;
+    $('tPrev').onclick = () => heroStep(-1);
+    $('tNext').onclick = () => heroStep(1);
+    $('tree').querySelectorAll('[data-ht]').forEach((b) => { b.onclick = () => { UI.heroType = b.dataset.ht; renderTree(); }; });
+    $('tree').querySelectorAll('[data-lv]').forEach((b) => { b.onclick = () => { UI.heroLv = +b.dataset.lv; renderTree(); }; });
+    wireTreeKind();
 }
 function closeTree() {
     if (UI.prevScreen === 'game' && game && !game.over) {
@@ -1916,6 +2015,8 @@ function closeTree() {
 }
 function treeStep(d) { const i = SHOP.indexOf(UI.treeType); UI.treeType = SHOP[(i + d + SHOP.length) % SHOP.length]; UI.treeSel = [0, 0]; renderTree(); }
 function renderTree() {
+    if (UI.treeKind === 'heroes')
+        return renderHeroTree();
     const type = UI.treeType, d = TD[type], pr = tprog(type), [sp, si] = UI.treeSel, u = d.paths[sp][si], tier = si + 1;
     const L = towerLevel(type), nextXp = towerXpForLevel(L + 1), curXp = towerXpForLevel(L);
     const why = unlockProblem(type, sp, tier), unlocked = why === 'unlocked';
@@ -1939,6 +2040,7 @@ function renderTree() {
       <div class="txpbox"><div class="txpnum"><img src="assets/ui/star.svg" alt=""><b>${pr.xp.toLocaleString()}</b> XP to spend</div>
         <div class="xpbar"><i style="width:${lvPct}%"></i></div><small>${L < MAX_TOWER_LEVEL ? `${(pr.total - curXp).toLocaleString()} / ${(nextXp - curXp).toLocaleString()} to level ${L + 1}` : 'Max level'}</small></div>
 </div>
+    ${treeKindHTML()}
     <div class="ttabs">${tabs}</div>
     <p class="tdesc">${d.desc} Earn ${d.name} XP by using it: ${TXP.perRound} per round on the field plus 1 per ${TXP.perPops} layers it pops.</p>
     <div class="treebody">
@@ -1965,6 +2067,7 @@ function renderTree() {
     $('tPrev').onclick = () => treeStep(-1);
     $('tNext').onclick = () => treeStep(1);
     $('tReset').onclick = () => { resetPerks(type); renderTree(); };
+    wireTreeKind();
     if ($('tUnlock'))
         $('tUnlock').onclick = () => { if (unlockTier(type, sp, tier)) {
             Sound.play('upgrade');
