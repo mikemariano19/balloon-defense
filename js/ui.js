@@ -4,7 +4,8 @@ const $ = (id) => document.getElementById(id);
 const cv = $('cv'), ctx = cv.getContext('2d');
 const UI = { shop: null, selected: null, selScenery: null, hoverTower: null, hoverScenery: null, previewRange: 0,
     mouse: { x: 0, y: 0, in: false }, speed: 1, paused: false, tier: 'beginner', menuMap: 0, menuDiff: 'medium', menuMode: 'standard',
-    modal: null, sellTarget: null, treeType: 'dart', treeSel: [0, 0], showInfo: false, cashShown: 0, draft: null, prevScreen: 'menu' };
+    modal: null, sellTarget: null, treeType: 'dart', treeSel: [0, 0], showInfo: false, cashShown: 0, draft: null, prevScreen: 'menu',
+    aim: null }; // the hero ability slot waiting for a click on the map
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const money = (n) => '$' + Math.floor(n).toLocaleString();
 const tierOf = (id) => TIERS.find(t => t.id === id);
@@ -51,6 +52,13 @@ function onLevelUp(lv, before) {
     }
 }
 function onTowerLevel(type, lv) { toast(`${TD[type].name} reached level ${lv}: +1 skill point`, 'good'); }
+/** The hero earned XP at the end of a round: refresh its panel. */
+function onHeroXp(leveled) {
+    if (leveled)
+        Sound.play('level');
+    if (inGame() && UI.selected && TD[UI.selected.type].hero)
+        renderPanel();
+}
 function txpLine() {
     const x = game.txpGame || {}, k = Object.keys(x).sort((a, b) => x[b] - x[a]);
     const free = game.won && game.round > game.diff.end ? `<p class="muted" style="text-align:center;font-size:12.5px">Freeplay: no tower XP after round ${game.diff.end}.</p>` : '';
@@ -141,8 +149,9 @@ function onVictory() {
     afterGameEnd(game.result);
     const d = game.diff, mode = game.mode !== 'standard';
     const reward = game.daily ? `<img class="medalbig" src="assets/ui/calendar.svg" alt=""><h2>Daily challenge complete!</h2>`
-        : mode ? `<img class="medalbig" src="assets/ui/star.svg" alt=""><h2>Challenge complete!</h2>`
-            : `<div class="medalbig">${badgeSVG(d.badge, true, 80)}</div><h2>Victory!</h2>`;
+        : game.mode === 'hero' ? `<img class="medalbig" src="assets/ui/star.svg" alt=""><h2>Victory!</h2>`
+            : mode ? `<img class="medalbig" src="assets/ui/star.svg" alt=""><h2>Challenge complete!</h2>`
+                : `<div class="medalbig">${badgeSVG(d.badge, true, 80)}</div><h2>Victory!</h2>`;
     const what = game.daily ? 'today\'s daily challenge' : `<b>${esc(game.map.name)}</b> on <b>${d.name}</b>` + (mode ? ` in <b>${MODES[game.mode].name}</b> mode` : '');
     openModal('end', `<div class="confetti">${Array.from({ length: 24 }, (_, i) => `<i style="--i:${i};--c:${['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ce93d8'][i % 5]}"></i>`).join('')}</div>
     <div style="text-align:center">${reward}<p class="lead">You beat ${what}${!mode && !game.daily ? ` and earned the ${d.name} badge` : ''}.</p></div>
@@ -173,7 +182,7 @@ function applyScale() { document.documentElement.style.setProperty('--ui', Strin
 /* ---------- Start / leave a game ---------- */
 function startGame(cfg, snap) {
     createGame(cfg, snap);
-    Object.assign(UI, { shop: null, selected: null, selScenery: null, hoverTower: null, hoverScenery: null, previewRange: 0, speed: 1, paused: false, cashShown: Math.floor(game.cash) });
+    Object.assign(UI, { aim: null, shop: null, selected: null, selScenery: null, hoverTower: null, hoverScenery: null, previewRange: 0, speed: 1, paused: false, cashShown: Math.floor(game.cash) });
     $('sCash').textContent = money(game.cash);
     VIEW.parts = [];
     closeModal();
@@ -182,7 +191,7 @@ function startGame(cfg, snap) {
     $('toasts').innerHTML = '';
     $('notes').innerHTML = ''; // home-page notes would cover the HUD
     lastNextRound = -1;
-    abilityKey = '';
+    abilityKey = null; // always rebuild the tray: '' would keep the last game's buttons when this one has none yet
     const modeTxt = game.daily ? 'Daily' : game.mode !== 'standard' ? MODES[game.mode].name : tierOf(game.map.tier).name;
     $('hMap').textContent = game.wb ? 'World Boss · ' + game.wb.boss.name + ' · ' + game.map.name : game.map.name + ' · ' + game.diff.name + ' · ' + modeTxt;
     $('game').classList.toggle('wbgame', !!game.wb);
@@ -377,16 +386,28 @@ function abilityByKey(n) {
     return ok;
 }
 function refreshAbilities() {
-    // one button per tower type: the ability and its cooldown are shared by every tower of that type
+    // one button per tower type: the ability and its cooldown are shared by every tower of that type. The hero's
+    // unlocked abilities come first, on Z and X.
     const list = SHOP.map(abilityTower).filter(Boolean);
-    const key = list.map(t => t.type + ':' + abPower(t)).join(',');
+    const hero = heroTower(), slots = hero ? [0, 1].filter(i => heroLevel(hero) >= HERO_ABILITY_LEVELS[i]) : [];
+    const key = slots.map(i => hero.type + ':h' + i).concat(list.map(t => t.type + ':' + abPower(t))).join(',');
     const bar = $('abilities');
     $('abilWrap').classList.toggle('closed', !SETTINGS.abilTray);
-    $('abilWrap').classList.toggle('none', !list.length);
-    $('abilBtn').classList.toggle('has', list.some(t => !abilityProblem(t)));
+    $('abilWrap').classList.toggle('none', !list.length && !slots.length);
+    $('abilBtn').classList.toggle('has', list.some(t => !abilityProblem(t)) || slots.some(i => !heroAbilityProblem(i)));
     if (key !== abilityKey) {
         abilityKey = key;
         bar.innerHTML = '';
+        slots.forEach(i => {
+            const b = document.createElement('button'), ab = HEROES[hero.type].abilities[i];
+            b.className = 'abil hab';
+            b.dataset.slot = String(i);
+            b.title = ab.name + ' — ' + ab.desc + ' [' + HERO_KEYS[i] + ']';
+            b.appendChild(iconCanvas(hero.type, 40));
+            b.insertAdjacentHTML('beforeend', `<i></i><kbd class="hk">${HERO_KEYS[i]}</kbd>`);
+            b.addEventListener('click', () => heroAbilityKey(i));
+            bar.appendChild(b);
+        });
         list.slice(0, 10).forEach(t => {
             const b = document.createElement('button');
             b.className = 'abil' + (abPower(t) === 2 ? ' p2' : '');
@@ -405,7 +426,20 @@ function refreshAbilities() {
             bar.appendChild(b);
         });
     }
+    // the buttons in the selected hero's panel
+    document.querySelectorAll('.habbtn').forEach((b) => {
+        const i = +b.dataset.slot, why = heroAbilityProblem(i);
+        b.querySelector('small').textContent = why || (UI.aim === i ? 'Click the map to aim' : HEROES[hero.type].abilities[i].desc);
+        b.classList.toggle('ready', !why);
+    });
     bar.querySelectorAll('.abil').forEach((b) => {
+        if (b.dataset.slot !== undefined) {
+            const i = +b.dataset.slot, left = heroCdLeft(i), id = hero.type + ':' + i;
+            b.style.setProperty('--p', String(left > 0 ? Math.min(1, left / (game.abMax[id] || left)) : 0));
+            b.classList.toggle('ready', !heroAbilityProblem(i));
+            b.classList.toggle('sel', UI.aim === i);
+            return;
+        }
         const t = abilityTower(b.dataset.type);
         if (!t)
             return;
@@ -421,7 +455,7 @@ $('abilBtn').addEventListener('click', toggleTray);
 /* ---------- Stats helpers ---------- */
 function statRows(type, s) {
     if (s.mode === 'mine')
-        return [['Income', money(s.income) + '/round'], ['Pop bonus', s.popBonus ? '+' + Math.round(s.popBonus * 100) + '%' : '—'], ['Interest', s.vault ? Math.round(s.vault * 100) + '%' : '—'], ['Lives', s.lives ? '+' + s.lives + '/round' : '—']];
+        return [['Income', money(s.income) + '/' + MINE_PAY_TIME + 's'], ['Pop bonus', s.popBonus ? '+' + Math.round(s.popBonus * 100) + '%' : '—'], ['Interest', s.vault ? Math.round(s.vault * 100) + '%/' + MINE_PAY_TIME + 's' : '—'], ['Lives', s.lives ? '+' + s.lives + '/round' : '—']];
     if (s.mode === 'aura')
         return [['Aura', s.aura], ['Speed', s.buffRate ? '+' + Math.round(s.buffRate * 100) + '%' : '—'], ['Range', s.buffRange ? '+' + Math.round(s.buffRange * 100) + '%' : '—'],
             ['Damage', s.buffDmg ? '+' + s.buffDmg : '—'], ['Pierce', s.buffPierce ? '+' + s.buffPierce : '—'], ['Camo', s.buffCamo ? 'Yes' : '—']];
@@ -454,7 +488,7 @@ function badges(type, s) {
     b.push(s.camo ? '<span class="badge camo">Sees camo</span>' : '<span class="badge no">No camo</span>');
     if (s.dtype === 'sharp')
         b.push('<span class="badge no">Can\'t pop lead</span>');
-    else if (s.dtype === 'explosive')
+    else if (s.dtype === 'explosive' && !s.crack)
         b.push('<span class="badge no">Can\'t pop black/zebra</span>');
     else if (s.mode === 'pulse' && !s.freezeAll)
         b.push('<span class="badge no">Can\'t freeze white/zebra</span>');
@@ -486,7 +520,7 @@ function deltas(a, b) {
     if (b.bolts !== a.bolts)
         out.push(b.bolts + ' bolts');
     if (b.income !== a.income)
-        out.push('+' + money(b.income - a.income) + '/rd');
+        out.push('+' + money(b.income - a.income) + (b.mode === 'mine' ? '/' + MINE_PAY_TIME + 's' : '/rd'));
     if (b.freeze !== a.freeze)
         out.push('Freeze +' + (b.freeze - a.freeze).toFixed(1) + 's');
     if (b.aura !== a.aura)
@@ -562,19 +596,67 @@ function buildShop() {
         b.addEventListener('mouseleave', () => { hideTip(); $('hoverName').textContent = UI.shop ? TD[UI.shop].name : 'Towers'; });
         el.appendChild(b);
     });
+    buildHeroShop();
     showInfo(null);
+}
+/** Heroes mode: the heroes above the towers. Once one is picked for this game, only that one is listed. */
+function buildHeroShop() {
+    const el = $('heroShop'), on = game.mode === 'hero';
+    el.innerHTML = '';
+    el.classList.toggle('on', on);
+    if (!on)
+        return;
+    const placed = heroTower(), mine = placed ? placed.type : game.heroId;
+    (mine ? [mine] : HERO_IDS).forEach(type => {
+        const b = document.createElement('button'), why = shopProblem(type), cost = price(TD[type].cost, type);
+        b.className = 'shopbtn hero' + (why ? ' locked' : '') + (mine ? ' one' : '');
+        b.dataset.type = type;
+        if (!why)
+            b.dataset.cost = String(cost);
+        b.appendChild(iconCanvas(type, 50));
+        b.insertAdjacentHTML('beforeend', `<span class="pr">${placed ? 'On field' : money(cost)}</span>`);
+        b.addEventListener('click', () => pickShop(type));
+        b.addEventListener('mouseenter', () => { showTip(type, b); $('hoverName').textContent = TD[type].name; });
+        b.addEventListener('mouseleave', () => { hideTip(); $('hoverName').textContent = UI.shop ? TD[UI.shop].name : 'Towers'; });
+        el.appendChild(b);
+    });
+}
+/** Every skill and ability of a hero, with the ones above `level` dimmed. */
+function heroSkillsHTML(type, level) {
+    return `<ul class="hskills">${heroSkillList(type).map(([lv, name, desc, slot]) => `<li class="${lv > level ? 'locked' : ''}"><em>Lv ${lv}</em><span><b>${name}</b>${slot >= 0 ? ` <kbd>${HERO_KEYS[slot]}</kbd>` : ''}<br>${desc}</span></li>`).join('')}</ul>`;
+}
+/** Z / X, the tray and the hero panel: use hero ability `i`, or start aiming it (press again to cancel). */
+function heroAbilityKey(i) {
+    if (!game || game.over || game.mode !== 'hero')
+        return;
+    const t = heroTower(), ab = t && HEROES[t.type].abilities[i], why = heroAbilityProblem(i);
+    if (why) {
+        UI.aim = null;
+        toast((ab ? ab.name + ': ' : '') + why, 'warn', 1500);
+    }
+    else if (ab.aim) {
+        const cancel = UI.aim === i;
+        if (UI.shop)
+            pickShop(null);
+        UI.aim = cancel ? null : i;
+        if (!cancel)
+            toast(ab.name + ': click the map to aim (Esc cancels)', undefined, 2000);
+    }
+    else
+        useHeroAbility(i);
+    refreshHUD();
 }
 /** The small hint under the tower buttons. It stays one size, so hovering never moves the column. */
 function showInfo(type) {
-    $('info').innerHTML = type ? `<div class="empty">Placing <b>${TD[type].name}</b>: click the map. Hold <kbd>Shift</kbd> to build several. Right-click cancels.</div>`
+    $('info').innerHTML = type ? `<div class="empty">Placing <b>${TD[type].name}</b>: click the map. ${TD[type].hero ? 'One hero per game.' : 'Hold <kbd>Shift</kbd> to build several.'} Right-click cancels.</div>`
         : '<div class="empty">Pick a tower, then click the map. Hold <kbd>Shift</kbd> to build several. Right-click cancels.</div>';
 }
 /** The tower description card, shown beside the tower column (over the map) while a tower button is hovered. */
 function showTip(type, btn) {
     const el = $('tipCard'), d = TD[type], s = statsFor(type, [0, 0, 0]), why = shopProblem(type);
     el.innerHTML = `<div class="tiphead"><b>${d.name}</b><span class="tipcost"><img src="assets/ui/coin.svg" alt="">${money(price(d.cost, type))}</span></div>
-    <div class="desc">${d.desc}</div>
-    <div class="foot">${d.size}×${d.size} tiles · Tower level ${towerLevel(type)}</div>
+    ${d.hero ? `<div class="herotip"><img src="assets/heroes/${type}-portrait.svg" alt=""><div class="desc"><b>${HEROES[type].role}</b><br>${d.desc}</div></div>${heroSkillsHTML(type, HERO_MAX_LEVEL)}` : `<div class="desc">${d.desc}</div>`}
+    <div class="foot">${d.size}×${d.size} tiles · ${d.hero ? 'Starts at level 1' : 'Tower level ' + towerLevel(type)}</div>
     ${why ? `<div class="lockline"><img src="assets/ui/lock.svg" alt="">${why}</div>` : ''}
     <div class="stats">${statRows(type, s).map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div><div class="badges">${badges(type, s)}</div>`;
     el.classList.add('on');
@@ -594,6 +676,7 @@ function pickShop(type) {
         }
     }
     UI.shop = UI.shop === type ? null : type;
+    UI.aim = null;
     if (UI.shop) {
         UI.selected = null;
         UI.selScenery = null;
@@ -645,6 +728,10 @@ function renderPanel() {
         refreshHUD();
         return;
     }
+    if (TD[t.type].hero) {
+        renderHeroPanel(el, t);
+        return;
+    }
     const d = TD[t.type];
     let h = `<div class="tp"><div class="tptop"><b>${d.name}</b><span class="star" title="Pops">★ <b id="tpPops">${t.pops.toLocaleString()}</b></span>
       <button class="tup" data-act="tree" title="Upgrade tree: unlock tiers with XP">${CHEVRON('u')}${xpReady(t.type) ? '<span class="dot"></span>' : ''}</button><button class="i${UI.showInfo ? ' on' : ''}" data-act="info" title="Stats">i</button><button class="x" data-act="deselect" title="Close (Esc)">×</button></div>
@@ -676,6 +763,30 @@ function renderPanel() {
     const ic = $('tpIcon').getContext('2d');
     ic.scale(2, 2);
     drawTower(ic, t.type, 40, 40, -Math.PI / 4, t.lv, 0, 30 / d.r);
+    refreshHUD();
+}
+/** The panel of a placed hero: portrait, level and XP, targeting, abilities, every skill, and Sell. */
+function renderHeroPanel(el, t) {
+    const hd = HEROES[t.type], lv = heroLevel(t), max = lv >= HERO_MAX_LEVEL, xp = t.heroXp || 0;
+    const from = HERO_XP[lv], to = max ? from : HERO_XP[lv + 1], pct = max ? 100 : Math.round(100 * (xp - from) / (to - from));
+    let h = `<div class="tp"><div class="tptop"><b>${hd.name}</b><span class="star" title="Pops">★ <b id="tpPops">${t.pops.toLocaleString()}</b></span>
+      <button class="i${UI.showInfo ? ' on' : ''}" data-act="info" title="Stats" style="margin-left:auto">i</button><button class="x" data-act="deselect" title="Close (Esc)">×</button></div>
+    <div class="tpport"><img class="heroport" src="assets/heroes/${t.type}-portrait.svg" alt=""><div class="tpside">
+      <div class="lvtag">Hero level ${lv}${max ? ' (max)' : ''}</div><div class="hxp"><i style="width:${pct}%"></i></div>
+      <div class="muted small">${max ? hd.role : (xp - from) + ' / ' + (to - from) + ' XP · +' + heroRoundXp(game.inRound ? game.round : game.round + 1) + ' after this round'}</div>
+      ${t.buffed ? '<span class="buffed">Boosted by a Signal Tower</span>' : ''}
+      <div class="seglabel">Target <kbd>G</kbd></div><div class="seg tg">${[['first', 'First'], ['last', 'Last'], ['close', 'Close'], ['strong', 'Strong']]
+        .map(([k, n]) => `<button data-tg="${k}" class="${t.target === k ? 'on' : ''}">${n}</button>`).join('')}</div></div></div>`;
+    if (UI.showInfo)
+        h += `<div class="stats">${statRows(t.type, t.s).map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div><div class="badges">${badges(t.type, t.s)}</div>`;
+    hd.abilities.forEach((ab, i) => {
+        h += `<button class="btn abilbtn habbtn" data-act="hab" data-slot="${i}"><img class="icon" src="assets/ui/bolt.svg" alt=""><span><b>${ab.name}</b><small></small></span><kbd>${HERO_KEYS[i]}</kbd></button>`;
+    });
+    // Sell sits above the skill list, so it shows without scrolling
+    h += `<div class="tpbot"><span class="sellval"><img src="assets/ui/coin.svg" alt=""><span id="tpSell">${money(sellValue(t))}</span></span><button class="btn danger" data-act="sell">Sell <kbd>Del</kbd></button></div>`;
+    h += `<div class="refund">${t.fresh > 0 ? 'Full refund on a hero bought since the last round started.' : 'Selling loses its levels.'}</div>`;
+    h += heroSkillsHTML(t.type, lv) + '</div>';
+    el.innerHTML = h;
     refreshHUD();
 }
 $('panel').addEventListener('click', (e) => {
@@ -732,6 +843,8 @@ $('panel').addEventListener('click', (e) => {
         if (useAbility(UI.selected))
             renderPanel();
     }
+    else if (b.dataset.act === 'hab')
+        heroAbilityKey(+b.dataset.slot);
 });
 $('panel').addEventListener('mouseover', (e) => {
     const b = e.target.closest('[data-range]');
@@ -761,7 +874,16 @@ function askSell(t) {
     openModal('confirm', `<h2>Sell ${TD[t.type].name}?</h2><p class="lead">You'll get back ${money(sellValue(t))}.</p>
     <div class="row"><button class="btn" data-act="close">Cancel</button><button class="btn danger" data-act="dosell">Sell</button></div>`);
 }
-function doSell(t) { sellTower(t); UI.selected = null; renderPanel(); refreshHUD(); }
+function doSell(t) {
+    sellTower(t);
+    if (t && TD[t.type].hero) {
+        UI.aim = null;
+        buildShop();
+    }
+    UI.selected = null;
+    renderPanel();
+    refreshHUD();
+}
 /* ---------- Canvas input ---------- */
 function canvasPos(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height }; }
 function towerAt(x, y) { return game.towers.find(t => { const h = halfSize(t.type); return Math.abs(t.x - x) <= h && Math.abs(t.y - y) <= h; }) || null; }
@@ -781,11 +903,19 @@ cv.addEventListener('pointerdown', (e) => {
         return;
     const p = canvasPos(e);
     Object.assign(UI.mouse, p, { in: true });
+    if (UI.aim != null) { // aiming a hero ability
+        useHeroAbility(UI.aim, p.x, p.y);
+        UI.aim = null;
+        refreshHUD();
+        return;
+    }
     if (UI.shop) {
-        const t = placeTower(UI.shop, p.x, p.y);
-        if (t && !e.shiftKey) {
+        const t = placeTower(UI.shop, p.x, p.y), hero = !!t && !!TD[t.type].hero;
+        if (t && (!e.shiftKey || hero)) {
             pickShop(null);
             UI.selected = t;
+            if (hero)
+                buildShop();
             renderPanel();
         }
         refreshHUD(true);
@@ -795,7 +925,7 @@ cv.addEventListener('pointerdown', (e) => {
     UI.selScenery = UI.selected ? null : sceneryAt(p.x, p.y);
     renderPanel();
 });
-cv.addEventListener('contextmenu', (e) => { e.preventDefault(); pickShop(null); UI.selected = null; UI.selScenery = null; renderPanel(); });
+cv.addEventListener('contextmenu', (e) => { e.preventDefault(); UI.aim = null; pickShop(null); UI.selected = null; UI.selScenery = null; renderPanel(); });
 /* ---------- Buttons & keys ---------- */
 function cycleSpeed() { UI.speed = UI.speed % 3 + 1; }
 function roundButton() {
@@ -845,7 +975,7 @@ $('gUpgrades').addEventListener('click', () => {
         UI.paused = true;
         snapshot();
     }
-    openTree(UI.selected ? UI.selected.type : UI.treeType, 'game');
+    openTree(UI.selected && !TD[UI.selected.type].hero ? UI.selected.type : UI.treeType, 'game');
 });
 $('mHelp').addEventListener('click', openHelp);
 $('mSettings').addEventListener('click', () => openSettings());
@@ -905,8 +1035,15 @@ document.addEventListener('keydown', (e) => {
         e.preventDefault();
         abilityBySlot(ABIL_KEYS.indexOf(k.toUpperCase()));
     }
+    else if ((k === 'z' || k === 'Z' || k === 'x' || k === 'X') && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        if (!e.repeat)
+            heroAbilityKey(HERO_KEYS.indexOf(k.toUpperCase()));
+    }
     else if (k === 'Escape') {
-        if (UI.shop || UI.selected || UI.selScenery) {
+        if (UI.aim != null)
+            UI.aim = null;
+        else if (UI.shop || UI.selected || UI.selScenery) {
             pickShop(null);
             UI.selected = null;
             UI.selScenery = null;
@@ -2004,8 +2141,8 @@ function openMapModal(i) {
         return `<button class="diff${k === UI.menuDiff ? ' on' : ''}" data-act="diff" data-diff="${k}"><div class="t">${d.name}${badgeSVG(d.badge, r.won)}</div><span>${d.note}</span><span>${r.won ? 'Badge earned' : r.best ? 'Best: round ' + r.best : 'Not played'}</span></button>`;
     }).join('')}</div>
     ${stageBoard(m, UI.menuDiff)}
-    <div class="modes">${Object.entries(MODES).map(([k, md]) => `<button class="mode${k === UI.menuMode ? ' on' : ''}" data-act="mode" data-mode="${k}" title="${esc(md.desc)}">${k !== 'standard' ? `<img src="assets/ui/${ch[k] ? 'star' : 'star-empty'}.svg" alt="">` : ''}${md.name}</button>`).join('')}</div>
-    <p class="modedesc">${esc(MODES[UI.menuMode].desc)}${UI.menuMode !== 'standard' ? ' Challenge runs are not ranked.' : ''}</p>
+    <div class="modes">${Object.entries(MODES).filter(([, md]) => !md.hidden).map(([k, md]) => `<button class="mode${k === UI.menuMode ? ' on' : ''}" data-act="mode" data-mode="${k}" title="${esc(md.desc)}">${CHALLENGES.includes(k) ? `<img src="assets/ui/${ch[k] ? 'star' : 'star-empty'}.svg" alt="">` : ''}${md.name}</button>`).join('')}</div>
+    <p class="modedesc">${esc(MODES[UI.menuMode].desc)}${UI.menuMode === 'hero' ? ' Heroes games are not ranked.' : UI.menuMode !== 'standard' ? ' Challenge runs are not ranked.' : ''}</p>
     ${run ? `<div class="warnline">Starting a new game replaces your saved game on ${esc(MAPS.find(x => x.id === run.mapId).name)}.</div>` : ''}
     <div class="row"><button class="btn primary big" data-act="play">Play ${DIFF[UI.menuDiff].name}${UI.menuMode !== 'standard' ? ' · ' + MODES[UI.menuMode].name : ''}</button></div></div>`, 'wide');
     c.querySelector('#mmPrev').appendChild(mapPreview(m, 1200));
@@ -2493,7 +2630,7 @@ function wbInfoHTML() {
       <li>It is fought twice, both days from <b>7:30 AM to 5:00 PM Philippine time</b>: <b>Normal on Thursday</b> and <b>Elite on Friday</b>. Each day has its own Top 5 board. A run still going at 5:00 PM ends, and its damage counts.</li>
       <li>At <b>5:01 PM on Friday</b> the <b>World Boss Champion</b> is announced to every player, even in the middle of a game (it pauses): #1 on the Elite board (or on the Normal board if nobody played Elite). Everyone also gets a notification with the top 3.</li>
       <li>You start with the boss's lives (<b>${p.boss.lives.toLocaleString()}</b> this week) and its start money. Press <b>PLAY</b> to start round 1.</li>
-      <li>It is played in <b>rounds</b>, like a normal game. The next round starts by itself as soon as this round's balloons are popped (or after ${WB_ROUND_MAX} seconds), and <b>rounds keep going while a boss is out</b>. Every round pays its round bonus and Gold Mine income, so farms keep making money.</li>
+      <li>It is played in <b>rounds</b>, like a normal game. The next round starts by itself as soon as this round's balloons are popped (or after ${WB_ROUND_MAX} seconds), and <b>rounds keep going while a boss is out</b>. Every round pays its round bonus and Gold Mines pay every ${MINE_PAY_TIME} seconds, so farms keep making money.</li>
       <li>The boss comes in <b>${WB_TIERS.length} tiers</b>, one every 20 rounds: on <b>rounds ${WB_TIERS_TXT()}</b>. A tier only comes once the one before it is popped. <b>Pop all ${WB_TIERS.length} before round ${WB_LAST_ROUND}</b> to win. The stars on the boss bar show its tier.</li>
       <li>Each tier walks the road very slowly towards the <b>END</b>, and stands still for a moment every time it summons. If it gets there, <b>the run is over</b>. Later tiers have more HP and walk a little faster. Tier HP this week, Normal: <b>${tierHp(false)}</b>. Elite: <b>${tierHp(true)}</b>, and it walks 15% faster.</li>
       <li><b>Skulls</b> on its health bar: when its health drops past one it uses its skill (this week: <b>${esc(WB_SKILLS[p.boss.skill] || '')}</b>). At the last, flaming skull it gets <b>angry</b>: 25% faster, and it summons more often. Elite has one more skull on every tier.</li>
@@ -3093,7 +3230,7 @@ function renderMasterTw(msg, err) {
     ${Share.connected() ? '' : '<div class="warnline">The shared folder isn\'t connected: this setup is only kept on this PC.</div>'}
     ${msg ? `<div class="mmsg">${esc(msg)}</div>` : ''}<div class="err" id="twErr">${err ? esc(err) : ''}</div>
     <div class="histwrap"><table class="wbtable wbsetup twsetup"><thead><tr><th class="l">Tower</th>${TW_FIELDS.map(fd => `<th>${fd.name} %</th>`).join('')}<th></th></tr></thead>
-    <tbody>${Object.keys(TD).map(row).join('')}</tbody></table></div>
+    <tbody>${SHOP.map(row).join('')}</tbody></table></div>
     <div class="row" style="justify-content:space-between"><button class="btn danger" data-act="master-twreset">Reset all to normal</button>
       <span><button class="btn" data-act="master-back">Back</button> <button class="btn primary" data-act="master-twsave">Save</button></span></div>`, 'wide');
     document.querySelectorAll('#modal input[data-tw]').forEach((el) => el.addEventListener('input', () => { el.className = twClass(el.dataset.f, +el.value || 100); }));
@@ -3101,7 +3238,7 @@ function renderMasterTw(msg, err) {
 /** The tower setup form as a config ({ at, towers }), or an error message. `only` puts one tower back to normal. */
 function readMasterTw(only) {
     const towers = {};
-    for (const type of Object.keys(TD)) {
+    for (const type of SHOP) {
         if (only === type)
             continue;
         const x = {};

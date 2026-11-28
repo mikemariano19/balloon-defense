@@ -372,7 +372,7 @@ function footFor(type, x, y) {
 }
 function halfSize(type) { return (TD[type].size || 2) * TILE / 2; }
 /* ---------- Line of sight ---------- */
-const SIGHT_PROJ = { dart: 1, bolt: 1, tack: 1, blade: 1, ball: 1, cannonball: 1, torpedo: 1 };
+const SIGHT_PROJ = { dart: 1, bolt: 1, tack: 1, blade: 1, ball: 1, cannonball: 1, torpedo: 1, arrow: 1, ember: 1 };
 function sightBlocked(s) { return s.mode === 'hitscan' || s.mode === 'chain' || (!s.mode && !!SIGHT_PROJ[s.proj]); }
 function segHitsCircle(x1, y1, x2, y2, cx, cy, r) {
     const dx = x2 - x1, dy = y2 - y1, L2 = dx * dx + dy * dy;
@@ -455,6 +455,7 @@ function createGame(cfg, snap) {
         pops: 0, roundPops: 0, hpMult: 1, popMult: 1, time: 0, clock: 0, autoT: -1, startedAt: Date.now(), leaked: 0, deco: makeDeco(map, paths), saveT: 0,
         allowed: MODES[mode].towers || SHOP, perks, ua: !!DEV.unlockAll, cleared: [], submitted: false, shake: 0,
         abCd: {}, abMax: {},
+        heroId: null, heroFx: [], heroBuff: { kindle: 0, reload: 0, grove: 0 },
         wb: wbBoss ? { boss: Object.assign({}, wbBoss), k: cfg.wbWeek === undefined ? -1 : cfg.wbWeek, elite: !!cfg.wbElite, t: 0, summonT: 0, payT: 0, damage: 0,
             tier: 0, tiers: 0, clearT: 0, angry: false, escaped: false, killed: false, ref: null, done: false } : null };
     if (snap) {
@@ -465,13 +466,18 @@ function createGame(cfg, snap) {
     if (snap) {
         Object.assign(game, { round: snap.round, lives: snap.lives, cash: snap.cash, won: !!snap.won, pops: snap.pops || 0, time: snap.time || 0,
             clock: snap.clock || 0, leaked: snap.leaked || 0, ua: !!snap.ua || !!DEV.unlockAll, submitted: !!snap.submitted });
+        game.heroId = snap.heroId || null;
+        game.heroFx = (snap.heroFx || []).map(e => Object.assign({}, e));
+        Object.assign(game.heroBuff, snap.heroBuff || {});
         for (const s of snap.towers) {
             const t = newTower(s.type, s.x, s.y);
             const lv = s.lv.slice();
             while (lv.length < 3)
                 lv.push(0); // v3 saves had 2 paths
-            Object.assign(t, { lv, spent: s.spent, fresh: s.fresh || 0, pops: s.pops || 0, xpPops: s.xpPops || 0, target: s.target || 'first', ang: s.ang || -Math.PI / 2, cd: s.cd || 0 });
+            Object.assign(t, { lv, spent: s.spent, fresh: s.fresh || 0, pops: s.pops || 0, xpPops: s.xpPops || 0, target: s.target || 'first', ang: s.ang || -Math.PI / 2, cd: s.cd || 0, payT: s.payT || 0 });
             t.aim = t.ang;
+            if (TD[s.type].hero)
+                Object.assign(t, { heroXp: s.heroXp || 0, shots: s.shots || 0, splitT: s.splitT || 0 });
             game.towers.push(t);
             if (s.abCd > (game.abCd[s.type] || 0))
                 game.abCd[s.type] = s.abCd; // older saves kept one cooldown per tower
@@ -482,10 +488,11 @@ function createGame(cfg, snap) {
         recalcAll();
         if (snap.inRound) {
             game.hpMult = hpMultFor(game.round);
-            Object.assign(game, { inRound: true, roundTime: snap.roundTime, spawned: snap.spawned, roundTotal: snap.roundTotal, roundPops: snap.roundPops || 0, spawnQ: snap.spawnQ || [] });
+            Object.assign(game, { inRound: true, roundTime: snap.roundTime, spawned: snap.spawned, roundTotal: snap.roundTotal, roundPops: snap.roundPops || 0, spawnQ: snap.spawnQ || [],
+                quietT: snap.quietT || 0 });
             for (const s of snap.balloons || []) {
                 const b = makeBalloon(s.type, s.dist, { camo: s.camo, lineage: s.lineage, pi: s.pi, regrow: s.regrow, fort: s.fort });
-                Object.assign(b, { hp: s.hp, maxHp: s.maxHp, frozen: s.frozen || 0, slow: s.slow || 0, regTop: s.regTop ?? b.regTop, bossStage: s.bossStage || 0, spdMul: s.spdMul || 1 });
+                Object.assign(b, { hp: s.hp, maxHp: s.maxHp, frozen: s.frozen || 0, slow: s.slow || 0, regTop: s.regTop ?? b.regTop, bossStage: s.bossStage || 0, spdMul: s.spdMul || 1, rootT: s.rootT || 0 });
                 game.balloons.push(b);
                 nextId = Math.max(nextId, s.lineage + 1);
             }
@@ -501,17 +508,19 @@ function snapshot() {
     const g = game;
     if (!g || g.over || g.wb)
         return; // a World Boss run isn't saved half-way: its damage is recorded as it goes (wbRecord)
-    store.set('run', { v: 4, mapId: g.map.id, diffKey: g.diffKey, mode: g.mode, daily: g.daily, round: g.round, lives: g.lives, cash: Math.floor(g.cash), won: g.won, pops: g.pops, time: g.time,
+    // a Heroes save is v5: a build without heroes can't load a hero, so it must not offer to continue one
+    store.set('run', { v: g.mode === 'hero' ? 5 : 4, mapId: g.map.id, diffKey: g.diffKey, mode: g.mode, daily: g.daily, round: g.round, lives: g.lives, cash: Math.floor(g.cash), won: g.won, pops: g.pops, time: g.time,
         clock: g.clock, leaked: g.leaked, ua: g.ua, cleared: g.cleared, submitted: g.submitted,
-        towers: g.towers.map(t => ({ type: t.type, x: t.x, y: t.y, lv: t.lv, spent: t.spent, fresh: t.fresh, pops: t.pops, xpPops: t.xpPops, target: t.target, ang: t.ang, cd: t.cd })),
-        abCd: g.abCd, abMax: g.abMax,
-        inRound: g.inRound, roundTime: g.roundTime, spawned: g.spawned, roundTotal: g.roundTotal, roundPops: g.roundPops,
+        towers: g.towers.map(t => ({ type: t.type, x: t.x, y: t.y, lv: t.lv, spent: t.spent, fresh: t.fresh, pops: t.pops, xpPops: t.xpPops, target: t.target, ang: t.ang, cd: t.cd, payT: t.payT,
+            ...(TD[t.type].hero ? { heroXp: t.heroXp || 0, shots: t.shots || 0, splitT: t.splitT || 0 } : {}) })),
+        abCd: g.abCd, abMax: g.abMax, heroId: g.heroId, heroFx: g.heroFx, heroBuff: g.heroBuff,
+        inRound: g.inRound, roundTime: g.roundTime, spawned: g.spawned, roundTotal: g.roundTotal, roundPops: g.roundPops, quietT: g.quietT,
         spawnQ: g.inRound ? g.spawnQ : [],
         balloons: g.inRound ? g.balloons.filter(b => !b.dead).map(b => ({ type: b.type, hp: b.hp, maxHp: b.maxHp, dist: b.dist, camo: b.camo, lineage: b.lineage, pi: b.pi,
-            frozen: b.frozen, slow: b.slow, regrow: b.regrow, regTop: b.regTop, fort: b.fort, bossStage: b.bossStage, spdMul: b.spdMul })) : [],
+            frozen: b.frozen, slow: b.slow, regrow: b.regrow, regTop: b.regTop, fort: b.fort, bossStage: b.bossStage, spdMul: b.spdMul, rootT: b.rootT })) : [],
         savedAt: Date.now() });
 }
-function savedRun() { const r = store.get('run', null); return r && (r.v === 3 || r.v === 4) && MAPS.some(m => m.id === r.mapId) && DIFF[r.diffKey] ? r : null; }
+function savedRun() { const r = store.get('run', null); return r && (r.v === 3 || r.v === 4 || r.v === 5) && MAPS.some(m => m.id === r.mapId) && DIFF[r.diffKey] ? r : null; }
 function clearRun() { store.set('run', null); }
 function saveRecord() {
     if (game.mode !== 'standard' || game.daily)
@@ -626,7 +635,7 @@ function makeBalloon(type, dist, o = {}) {
         hp = 4;
     const ri = REGROW_CHAIN.indexOf(type), regrow = !!o.regrow && ri >= 0;
     const b = { id: nextId++, type, hp, maxHp: hp, dist, camo: !!o.camo && !d.blimp, lineage: o.lineage || 0, pi: o.pi || 0, frozen: 0, slow: 0,
-        slowT: 0, bslow: 0, dead: false, x: 0, y: 0, a: 0, wob: Math.random() * 6, flash: 0,
+        slowT: 0, bslow: 0, rootT: 0, dead: false, x: 0, y: 0, a: 0, wob: Math.random() * 6, flash: 0,
         regrow, regTop: regrow ? (o.regTop ?? ri) : -1, regT: 0, fort, bossStage: 0, spdMul: 1, numT: 0, born: o.kid ? game.time : -9, wr: o.wr || 0 };
     if (!b.lineage)
         b.lineage = b.id;
@@ -735,6 +744,8 @@ function popBalloon(b, left, dtype, src) {
     kids.forEach((k, i) => {
         const c = makeBalloon(k, Math.max(0, b.dist - i * (d.blimp ? 14 : 8)), { camo: b.camo, lineage: b.lineage, pi: b.pi, regrow: b.regrow, regTop: b.regTop, kid: true, wr: b.wr });
         c.slow = b.slow;
+        if (!BT[k].blimp)
+            c.rootT = b.rootT; // Tangle Roots holds the layers underneath too
         g.balloons.push(c);
         if (left > 0)
             damageBalloon(c, left, dtype, src, 0);
@@ -757,9 +768,9 @@ function bossCheck(b) {
 function leakValue(b) { return BT[b.type].boss ? Math.ceil(b.hp) : Math.ceil(b.hp) + BT[b.type].kids.reduce((s, k) => s + RBE[k], 0); }
 /* ---------- World Boss run (5.2: rounds, five tiers, a road with an END) ----------
    PLAY starts round 1. Rounds go on by themselves: the next one starts WB_ROUND_GAP seconds after this one's balloons
-   are all popped, or after WB_ROUND_MAX seconds. Every round pays like a normal round (round bonus, Gold Mine income
-   and lives, XP). Tier n comes at the start of round WB_TIER_ROUNDS[n - 1] (40, 60, 80, 100, 120), but only once tier
-   n - 1 is popped. The boss walks the road very slowly (wbWalkTime) and stops to summon balloons on a timer that speeds
+   are all popped, or after WB_ROUND_MAX seconds. Every round pays like a normal round (round bonus, income towers,
+   Gold Mine lives, XP; Gold Mine cash comes every MINE_PAY_TIME seconds). Tier n comes at the start of round
+   WB_TIER_ROUNDS[n - 1] (40, 60, 80, 100, 120), but only once tier n - 1 is popped.The boss walks the road very slowly (wbWalkTime) and stops to summon balloons on a timer that speeds
    up (wbSummonGap); its balloons get 1% stronger every minute (wbStrength) and take lives when they get through. When
    its health drops past a skull it uses its skill (WB_SKILLS); at the last skull it gets angry. The boss can't be
    frozen, stunned or slowed. The run ends when all five tiers are popped (a win), the boss reaches the END, lives reach
@@ -901,17 +912,14 @@ function wbSummon(b, type = wbMob(game.wb.t), count = game.wb.boss.count) {
     g.hpMult = hm;
     addFx({ k: 'ring', x: b.x, y: b.y, r: BT[b.type].r * 1.1, col: '#ce93d8', life: .5, fill: true });
 }
-/** The end of every round: the round bonus, Gold Mine income and lives, player XP and tower XP. */
+/** The end of every round: the round bonus, tower income, Gold Mine lives, player XP and tower XP. */
 function wbPayday() {
     const g = game, bonus = Math.round(roundBonus(g.round) * wbGold());
     let income = bonus, lives = 0;
     g.cash += bonus;
     for (const t of g.towers) {
-        if (t.s.income > 0) {
-            let inc = t.s.income;
-            if (t.s.vault)
-                inc += Math.min(t.s.vaultCap || 1000, Math.floor(g.cash * t.s.vault));
-            inc = Math.round(inc * wbGold());
+        if (t.s.income > 0 && t.type !== 'mine') {
+            const inc = Math.round(t.s.income * wbGold());
             income += inc;
             g.cash += inc;
             addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + inc, col: '#ffd93d', life: 1.5 });
@@ -1032,6 +1040,7 @@ function startRound() {
     g.spawned = 0;
     g.roundPops = 0;
     g.roundTime = 0;
+    g.quietT = 0;
     g.inRound = true;
     g.autoT = -1;
     g.saveT = 0;
@@ -1039,6 +1048,9 @@ function startRound() {
         g.ua = true;
     for (const t of g.towers)
         t.fresh = 0; // free undo ends when the round starts
+    const hero = heroTower();
+    if (hero)
+        g.heroId = hero.type; // this hero has fought: no swapping to another one
     const groups = roundGroups(g.round), prev = g.round > 1 ? roundGroups(g.round - 1) : [];
     if (groups.some(x => x.type === 'boss')) {
         toast('Boss round! The Colossus is coming.', 'warn');
@@ -1063,10 +1075,8 @@ function endRound() {
     let income = 0, lives = 0;
     g.cash += bonus;
     for (const t of g.towers) {
-        if (t.s.income > 0) {
-            let inc = t.s.income;
-            if (t.s.vault)
-                inc += Math.min(t.s.vaultCap || 1000, Math.floor(g.cash * t.s.vault));
+        if (t.s.income > 0 && t.type !== 'mine') {
+            const inc = t.s.income;
             income += inc;
             g.cash += inc;
             addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + inc, col: '#ffd93d', life: 1.5 });
@@ -1079,6 +1089,7 @@ function endRound() {
     g.lives += lives;
     toast(`Round ${g.round} complete · +$${bonus}` + (income ? ` · income +$${income}` : '') + (lives ? ` · +${lives} lives` : ''), 'good');
     Sound.play('chime');
+    heroEndRound();
     PROFILE.pops += g.roundPops;
     PROFILE.rounds++;
     addXP(XP.perRound + g.roundPops / XP.perPops);
@@ -1087,6 +1098,8 @@ function endRound() {
     if (!g.ua && g.round <= g.diff.end) {
         const add = {};
         for (const t of g.towers) {
+            if (TD[t.type].hero)
+                continue; // heroes level up inside the game only
             const n = Math.floor((t.pops - t.xpPops) / TXP.perPops);
             t.xpPops += n * TXP.perPops;
             add[t.type] = (add[t.type] || 0) + TXP.perRound + n;
@@ -1105,7 +1118,7 @@ function endRound() {
             PROFILE.perfect++;
         saveRecord();
         let xp = XP.win;
-        if (g.mode !== 'standard') {
+        if (CHALLENGES.includes(g.mode)) { // Heroes mode is easier, not a challenge: no star and no bonus
             saveChallengeWin();
             xp += XP.challengeWin;
         }
@@ -1129,12 +1142,42 @@ function endRound() {
             g.autoT = 1.0;
     }
 }
+/* ---------- Gold Mines ---------- */
+/** One payout: the mine's gold plus its interest on the cash held. */
+function minePay(t) {
+    const g = game;
+    let inc = t.s.income;
+    if (t.s.vault)
+        inc += Math.min(t.s.vaultCap, Math.floor(g.cash * t.s.vault));
+    inc = Math.round(inc * wbGold());
+    g.cash += inc;
+    addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + inc, col: '#ffd93d', life: 1.5 });
+}
+/** Runs only during a round (game time, so pause stops it and fast forward speeds it up). Each mine keeps its own
+    timer, which carries over to the next round. Payouts stop MINE_GRACE seconds after the last balloon came out. */
+function mineTick(dt) {
+    const g = game;
+    g.quietT = g.spawnQ.length ? 0 : (g.quietT || 0) + dt;
+    if (g.quietT > MINE_GRACE)
+        return;
+    for (const t of g.towers) {
+        if (t.type !== 'mine')
+            continue;
+        t.payT += dt;
+        if (t.payT >= MINE_PAY_TIME) {
+            t.payT -= MINE_PAY_TIME;
+            minePay(t);
+        }
+    }
+}
 /* ---------- Towers ---------- */
 function newTower(type, x, y) {
-    return { id: nextId++, type, x, y, lv: [0, 0, 0], spent: 0, fresh: 0, cd: 0, ang: -Math.PI / 2, aim: -Math.PI / 2, pops: 0, xpPops: 0, target: 'first', s: null,
+    return { id: nextId++, type, x, y, lv: [0, 0, 0], spent: 0, fresh: 0, cd: 0, payT: 0, ang: -Math.PI / 2, aim: -Math.PI / 2, pops: 0, xpPops: 0, target: 'first', s: null,
         boostT: 0, boostMul: 1, boostChains: 0, kick: 0, buffed: false, blk: [] };
 }
 function statsFor(type, lv, perks) {
+    if (TD[type].hero)
+        return heroStats(type, 1); // a hero that isn't placed yet; recalcAll uses its level
     if (perks === undefined)
         perks = game && game.perks ? game.perks[type] : null;
     const d = TD[type], s = JSON.parse(JSON.stringify(d.base));
@@ -1190,7 +1233,7 @@ function statsFor(type, lv, perks) {
 function recalcAll() {
     const g = game;
     for (const t of g.towers)
-        t.base = statsFor(t.type, t.lv);
+        t.base = TD[t.type].hero ? heroStats(t.type, heroLevel(t)) : statsFor(t.type, t.lv);
     const sigs = g.towers.filter(t => t.type === 'signal');
     for (const t of g.towers) {
         const s = { ...t.base };
@@ -1221,6 +1264,7 @@ function recalcAll() {
             if (bCd)
                 s.cdMul *= (1 - bCd);
         }
+        heroBuffs(t, s);
         t.s = s;
         refreshBlockers(t);
     }
@@ -1257,6 +1301,8 @@ function spotProblem(type, x, y) {
     return '';
 }
 function shopProblem(type) {
+    if (TD[type].hero)
+        return heroProblem(type);
     if (!game.allowed.includes(type))
         return 'Not allowed in ' + MODES[game.mode].name + ' mode';
     if (!isUnlocked(type))
@@ -1278,7 +1324,10 @@ function placeTower(type, x, y) {
     t.fresh = g.inRound ? 0 : cost;
     g.towers.push(t);
     recalcAll();
-    PROFILE.built[type] = (PROFILE.built[type] || 0) + 1;
+    if (!TD[type].hero)
+        PROFILE.built[type] = (PROFILE.built[type] || 0) + 1;
+    else if (g.inRound)
+        g.heroId = type;
     addFx({ k: 'ring', x: f.x, y: f.y, r: 34, col: '#ffffff', life: .35 });
     addFx({ k: 'dust', x: f.x, y: f.y, life: .4 });
     Sound.play('place');
@@ -1289,7 +1338,7 @@ function placeTower(type, x, y) {
 /** 'ok' | 'max' | 'closed' (path rule) | 'mode' | 'unique' (one tier 5 per path per game) | 'xp' (tier not unlocked) */
 function canUp(t, p) {
     const lv = t.lv, nl = lv[p] + 1, others = [0, 1, 2].filter(i => i !== p).map(i => lv[i]);
-    if (nl > PATH_MAX)
+    if (nl > PATH_MAX || TD[t.type].hero)
         return 'max';
     if (lv[p] === 0 && others.every(v => v > 0))
         return 'closed';
@@ -1355,7 +1404,7 @@ function rankTargets(t, list) {
         : m === 'strong' ? (b) => -(toughness(b) * 1000 + progressOf(b)) : (b) => (b.x - x) * (b.x - x) + (b.y - y) * (b.y - y);
     return list.slice().sort((a, b) => key(a) - key(b));
 }
-function balloonSpeed(b) { return BASE_SPEED * BT[b.type].spd * (1 - b.slow) * b.spdMul; }
+function balloonSpeed(b) { return BASE_SPEED * BT[b.type].spd * (1 - b.slow) * b.spdMul * heroSlow(b); }
 function predict(b, tt) {
     const sp = b.frozen > 0 ? 0 : balloonSpeed(b), path = game.paths[b.pi];
     return posAt(path, Math.min(path.len, b.dist + sp * tt));
@@ -1367,7 +1416,7 @@ function fire(t, s, ang, radial, n, aimDist) {
         game.projs.push({ x: t.x + Math.cos(a) * 16, y: t.y + Math.sin(a) * 16, vx: Math.cos(a) * spd, vy: Math.sin(a) * spd, a,
             life, life0: life, pierce: s.pierce, dmg: s.dmg, dtype: s.dtype, hit: new Set(), camo: s.camo, src: t, kind: s.proj,
             rad: s.proj === 'ball' ? (s.big ? 22 : 14) : explode || s.proj === 'torpedo' ? 7 : s.proj === 'cannonball' ? 6 : 5,
-            explode, blast: s.blast, bm: s.bm || 1, cluster: s.cluster || 0, spin: 0, stun: s.stun || 0, big: s.big || 0,
+            explode, blast: s.blast, bm: s.bm || 1, cluster: s.cluster || 0, spin: 0, stun: s.stun || 0, big: s.big || 0, crack: s.crack || 0,
             arc: s.proj === 'bomb' ? Math.max(40, aimDist || s.range) : 0, trav: 0 });
     }
 }
@@ -1384,6 +1433,8 @@ function updateTower(t, dt) {
     }
     if (s.mode === 'mine' || s.mode === 'aura')
         return;
+    if (t.splitT > 0)
+        t.splitT -= dt; // Fern Fletch's Split Shot
     t.cd -= dt;
     if (t.cd > 0)
         return;
@@ -1481,9 +1532,13 @@ function updateTower(t, dt) {
                 }
                 cur = best;
             }
-            addFx({ k: 'bolt', pts, life: .2 });
+            addFx({ k: 'bolt', pts, life: .2, col: s.boltCol });
         }
         Sound.play('zap');
+        return;
+    }
+    if (t.type === 'fern') {
+        fernShot(t, ranked);
         return;
     }
     const radial = s.proj === 'tack' || s.proj === 'blade';
@@ -1593,7 +1648,7 @@ function useAbility(t) {
             fire(t, t.s, 0, true, pw === 2 ? 40 : 24);
             break;
         case 'mine': {
-            const v = Math.round(t.s.income * (pw === 2 ? 2.5 : 1.5));
+            const v = Math.round(t.s.income * MINE_PAYDAY[pw - 1] * wbGold());
             g.cash += v;
             addFx({ k: 'txt', x: t.x, y: t.y - 26, txt: '+$' + v, col: '#ffd93d', life: 1.5, big: true });
             break;
@@ -1614,7 +1669,7 @@ function explode(p) {
     }
     list.sort((a, b) => a[0] - b[0]);
     list.slice(0, p.pierce).forEach(([, b]) => {
-        damageBalloon(b, p.dmg, 'explosive', p.src, p.bm);
+        damageBalloon(b, p.dmg, p.crack ? 'normal' : 'explosive', p.src, p.bm); // crack: Flint's Armor Cracker
         if (p.stun && !b.dead) {
             if (!BT[b.type].blimp)
                 b.frozen = Math.max(b.frozen, p.stun);
@@ -1664,6 +1719,7 @@ function update(dt) {
             if (BT[s.type].boss)
                 onBoss(b);
         }
+        mineTick(dt);
         if (g.saveT >= 5) {
             g.saveT = 0;
             if (g.wb)
@@ -1692,6 +1748,8 @@ function update(dt) {
         const wbBoss = BT[b.type].wb;
         if (wbBoss) // the World Boss can't be frozen, stunned or slowed
             b.frozen = b.slowT = b.slow = b.bslow = 0;
+        if (b.rootT > 0)
+            b.rootT -= dt;
         if (b.frozen > 0) {
             b.frozen -= dt;
             continue;
@@ -1736,6 +1794,7 @@ function update(dt) {
         b.y = p.y;
         b.a = p.a;
     }
+    heroTick(dt);
     for (const t of g.towers) {
         updateTower(t, dt);
         if (t.kick > 0)
@@ -1790,6 +1849,8 @@ function update(dt) {
             }
             p.hit.add(b.lineage);
             const r = damageBalloon(b, p.dmg, p.dtype, p.src, p.bm);
+            if (p.burst)
+                heroBurst(p);
             if (r === 1 && Math.random() < .25)
                 addFx({ k: 'spark', x: p.x, y: p.y, life: .15, col: '#fff8e1' });
             if (r === -1 || --p.pierce <= 0) {

@@ -6,6 +6,8 @@ const ASSET_LIST = (() => {
     const l = [];
     for (const t of SHOP)
         l.push('towers/' + t + '-base', 'towers/' + t + '-top');
+    for (const h of HERO_IDS)
+        l.push('heroes/' + h); // the map token (heroes/<id>-portrait.svg is shown by the page itself)
     for (const b of Object.keys(BT))
         l.push('balloons/' + b);
     l.push('balloons/camo', 'balloons/frozen');

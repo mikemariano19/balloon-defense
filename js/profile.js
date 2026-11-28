@@ -178,7 +178,7 @@ function cleanTwConfig(o) {
     if (!o || typeof o !== 'object' || Array.isArray(o) || !(+o.at > 0))
         return null;
     const towers = {};
-    for (const type of Object.keys(TD)) {
+    for (const type of SHOP) {
         const x = o.towers && o.towers[type];
         if (!x || typeof x !== 'object')
             continue;

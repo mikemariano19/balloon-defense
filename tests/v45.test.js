@@ -139,6 +139,37 @@ test('Gold Mine skill points: income, vault, discount and Payday recharge all wo
   assert.strictEqual(E.price(1000, 'mine'), 900, '-2% cost per point');
 });
 
+test('Gold Mines pay every 10 seconds of a round, not at its end; Payday collects 5 or 8 payouts', () => {
+  const E = loadEngine();
+  E.DEV.unlockAll = true;
+  E.createGame({ mapIdx: MAP0, diffKey: 'medium' });
+  E.game.cash = 1e5;
+  const t = E.placeTower('mine', ...spot(E, 'mine'));
+  const run = sec => { for (let i = 0; i < sec * 4; i++) E.update(0.25); };
+  const gained = fn => { const before = E.game.cash; fn(); return E.game.cash - before; };
+  assert.strictEqual(gained(() => run(30)), 0, 'nothing between rounds');
+  E.startRound();
+  E.game.spawnQ = [{ at: 1e9, type: 'red' }]; // holds the round open
+  assert.strictEqual(gained(() => run(9.75)), 0);
+  assert.strictEqual(gained(() => run(0.25)), t.s.income, 'first payout at 10 s');
+  assert.strictEqual(gained(() => run(20)), 2 * t.s.income);
+  E.game.spawnQ = [];
+  E.game.balloons = [];
+  assert.strictEqual(gained(() => E.update(0.25)), E.roundBonus(1), 'the end of a round pays no mine gold');
+  // a round held open after its last balloon came out stops paying
+  E.startRound();
+  E.game.spawnQ = [];
+  E.game.balloons = [E.makeBalloon('red', 0)];
+  E.game.balloons[0].frozen = 1e9;
+  E.game.towers[0].payT = 0;
+  assert.strictEqual(gained(() => run(300)), 12 * t.s.income, 'at most MINE_GRACE seconds of payouts');
+  for (let i = 0; i < 3; i++) E.upgrade(t, 0);
+  assert.strictEqual(gained(() => E.useAbility(t)), 5 * t.s.income, 'Payday');
+  E.upgrade(t, 0);
+  E.game.abCd.mine = 0;
+  assert.strictEqual(gained(() => E.useAbility(t)), 8 * t.s.income, 'stronger Payday');
+});
+
 test('roads line up with the grid: straight roads are 2 tiles wide with no blocked strip beside them', () => {
   const E0 = loadEngine();
   for (let i = 0; i < E0.MAPS.length; i++) {

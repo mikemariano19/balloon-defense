@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="280" viewBox="0 0 240 280">
+  <rect width="240" height="280" fill="#b9c9cf"/><circle cx="120" cy="128" r="104" fill="#d8e4e6"/>
+  <g transform="rotate(32 188 150)"><rect x="166" y="52" width="44" height="170" rx="8" fill="#4a545a"/><rect x="159" y="46" width="58" height="22" rx="6" fill="#333b40"/><rect x="166" y="110" width="44" height="10" fill="#ffcf3f"/></g>
+  <path d="M20 280 C24 208 66 180 120 180 C174 180 216 208 220 280Z" fill="#59662f"/>
+  <path d="M96 188 L120 218 L144 188 L158 200 L134 240 H106 L82 200Z" fill="#475227"/>
+  <path d="M120 220 V280" stroke="#3a431f" stroke-width="4"/>
+  <circle cx="64" cy="232" r="10" fill="#ffcf3f"/><circle cx="90" cy="244" r="10" fill="#d9483b"/><path d="M58 214 H70 L64 226Z M84 226 H96 L90 238Z" fill="#e9eef0"/>
+  <g transform="translate(120 128)">
+    <circle cx="-52" cy="-28" r="21" fill="#7d5233"/><circle cx="52" cy="-28" r="21" fill="#7d5233"/>
+    <circle cx="-52" cy="-28" r="10" fill="#c79a72"/><circle cx="52" cy="-28" r="10" fill="#c79a72"/>
+    <ellipse cx="0" cy="6" rx="64" ry="57" fill="#8d5f3c"/>
+    <ellipse cx="0" cy="32" rx="33" ry="24" fill="#d3ab84"/>
+    <circle cx="-23" cy="0" r="7" fill="#1f130c"/><circle cx="23" cy="0" r="7" fill="#1f130c"/>
+    <circle cx="-21" cy="-2" r="2.4" fill="#fff"/><circle cx="25" cy="-2" r="2.4" fill="#fff"/>
+    <path d="M-40-12 L-10-8 M40-12 L10-8" stroke="#3b2416" stroke-width="8" stroke-linecap="round"/>
+    <ellipse cx="0" cy="22" rx="13" ry="9" fill="#2a1a11"/>
+    <path d="M0 31 V40 M-15 44 H15" stroke="#2a1a11" stroke-width="3.5" stroke-linecap="round"/>
+    <path d="M30 12 L44 34" stroke="#e9c9a8" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-62-18 C-62-82 62-82 62-18 Z" fill="#66733a"/>
+    <path d="M-70-22 Q0-36 70-22 L70-14 Q0-28-70-14Z" fill="#475227"/>
+    <path d="M0-66 L5-55 L17-54 L8-46 L11-35 L0-41 L-11-35 L-8-46 L-17-54 L-5-55Z" fill="#ffcf3f"/>
+  </g>
+  <g transform="translate(40 226) rotate(-18)"><path d="M-14 36 V-14 C-14-32 0-42 0-42 C0-42 14-32 14-14 V36Z" fill="#c9922f"/><rect x="-14" y="14" width="28" height="8" fill="#7d5a1c"/><circle cy="38" r="17" fill="#8d5f3c"/></g>
+</svg>
