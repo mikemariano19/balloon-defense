@@ -334,3 +334,30 @@ test('each hero can fight real rounds without errors', () => {
     assert.ok(t.pops > 0, id + ' popped balloons');
   }
 });
+
+test('World Boss: heroes join, level up, and never slow or stun the boss', () => {
+  const E = loadEngine();
+  E.DEV.unlockAll = true;
+  E.createGame({ mode: 'worldboss', wbBoss: 'wbgale', wbMap: 'wb-jungle' }); // no event week: no 5:00 PM cutoff
+  E.game.cash = 100000;
+  assert.strictEqual(E.shopProblem('willow'), '');
+  const t = place(E, 'willow');
+  assert.match(E.shopProblem('fern'), /already on the field/);
+  Object.assign(E.game, { round: 1, inRound: true }); // ended by hand: the real clock may be outside the event hours
+  E.endRound();
+  assert.ok(t.heroXp > 0, 'the hero earns XP from World Boss rounds');
+  assert.strictEqual(E.game.heroId, 'willow');
+  setLevel(E, t, 10);
+  const boss = spawn(E, 'wbgale', 50);
+  E.game.heroBuff.grove = 5;
+  assert.strictEqual(E.heroSlow(boss), 1, 'Great Grove skips the boss');
+  inRound(E);
+  t.lastAb = null;
+  E.game.round = 40;
+  E.useHeroAbility(0); // Tangle Roots
+  assert.ok(!(boss.rootT > 0), 'Tangle Roots skips the boss');
+  Object.assign(boss, { frozen: 2, rootT: 5 });
+  E.update(STEP);
+  assert.ok(!(boss.frozen > 0) && !(boss.rootT > 0), 'the boss shakes off stuns and roots');
+  assert.strictEqual(E.heroSlow(boss), 1);
+});

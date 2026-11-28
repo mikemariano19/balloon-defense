@@ -1725,7 +1725,7 @@ function update(dt) {
         }
         const wbBoss = BT[b.type].wb;
         if (wbBoss) // the World Boss can't be frozen, stunned or slowed
-            b.frozen = b.slowT = b.slow = b.bslow = 0;
+            b.frozen = b.slowT = b.slow = b.bslow = b.rootT = 0;
         if (b.rootT > 0)
             b.rootT -= dt;
         if (b.frozen > 0) {
