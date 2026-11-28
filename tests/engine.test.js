@@ -507,11 +507,29 @@ test('every map builds: paths stay clear of blocks, props off the road, room for
   }
 });
 
+test('balance pass: fewer lives and an earlier health ramp on Medium, Hard, Nightmare; Easy and World Boss unchanged', () => {
+  const E = loadEngine();
+  assert.deepStrictEqual(Object.values(E.DIFF).map(d => d.lives), [150, 100, 60, 1]);
+  assert.deepStrictEqual(Object.values(E.DIFF).map(d => d.ramp), [80, 70, 60, 70]);
+  E.createGame({ mapIdx: 0, diffKey: 'easy' });
+  assert.strictEqual(E.hpMultFor(80), 1);
+  assert.ok(Math.abs(E.hpMultFor(100) - (1 + 20 * 0.02)) < 1e-9, 'easy round 100 (last ramp round)');
+  assert.ok(Math.abs(E.hpMultFor(101) - (1 + 20 * 0.02 + 0.06)) < 1e-9, 'easy freeplay round 101');
+  E.createGame({ mapIdx: 0, diffKey: 'hard' });
+  assert.strictEqual(E.hpMultFor(60), 1);
+  assert.ok(Math.abs(E.hpMultFor(80) - (1 + 20 * 0.02)) < 1e-9, 'hard round 80');
+  E.createGame({ mapIdx: 0, diffKey: 'medium' });
+  assert.ok(E.hpMultFor(70) === 1 && E.hpMultFor(71) > 1, 'medium ramps from round 70');
+  const wb = loadEngine();
+  wb.createGame({ mode: 'worldboss', wbBoss: 'wbgale', wbMap: 'wb-jungle', wbWeek: 46 });
+  assert.ok(Math.abs(wb.hpMultFor(70) - 1) < 1e-9, 'World Boss keeps the old ramp');
+});
+
 test('a 15-round bot game runs cleanly and pays round bonuses', () => {
   const E = loadEngine();
   const r = playBot(E, 'meadow', 'easy', 'standard', { maxRounds: 15 });
   assert.strictEqual(r.round, 15);
-  assert.ok(!E.game.over && r.lives > 150, 'lives ' + r.lives);
+  assert.ok(!E.game.over && r.lives >= E.DIFF.easy.lives, 'lives ' + r.lives);
   assert.ok(r.towers >= 3);
   const done = E.log.filter(e => e.ev === 'toast' && /complete/.test(e.msg));
   assert.strictEqual(done.length, 15);

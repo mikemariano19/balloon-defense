@@ -404,7 +404,13 @@ function price(c, type?, up = false) {
     const m = type ? twMul(type, up ? 'up' : 'cost') : 1;
     return Math.round(c * m * (g ? g.diff.costMul : 1) * (1 - 0.02 * n) / 5) * 5;
 }
-function hpMultFor(r) { return r <= 80 ? 1 : r <= LAST_ROUND ? 1 + (r - 80) * 0.02 : 1.4 + (r - LAST_ROUND) * 0.06; }
+/** Balloon health multiplier for round r. Standard games climb from their difficulty's ramp round (DIFF.ramp);
+    World Boss rounds keep the old ramp at 80 so the boss balance doesn't move. */
+function hpMultFor(r) {
+    const ramp = game && game.diff && !game.wb ? game.diff.ramp : 80;
+    const top = 1 + (LAST_ROUND - ramp) * 0.02;
+    return r <= ramp ? 1 : r <= LAST_ROUND ? 1 + (r - ramp) * 0.02 : top + (r - LAST_ROUND) * 0.06;
+}
 function createGame(cfg, snap?) {
     // World Boss: its own maps, 3,000 lives and $10,000 start money; it is never saved half-way
     const wbBoss = cfg.mode === 'worldboss' ? WB_BOSSES.find(b => b.id === cfg.wbBoss) || WB_BOSSES[0] : null;

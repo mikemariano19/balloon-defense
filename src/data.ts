@@ -96,10 +96,11 @@ const MAPS: any[] = [
 /* Per-tier start-cash bonus keeps difficulty climbing evenly. */
 const TIER_CASH = { beginner: 300, intermediate: 150, advanced: 0, expert: 0 };
 const DIFF = {
-    easy: { name: 'Easy', lives: 200, cash: 650, costMul: 0.85, end: 40, badge: 'easy', points: 100, note: '200 lives · cheaper towers · 40 rounds' },
-    medium: { name: 'Medium', lives: 150, cash: 650, costMul: 1.00, end: 60, badge: 'medium', points: 200, note: '150 lives · normal prices · 60 rounds' },
-    hard: { name: 'Hard', lives: 100, cash: 650, costMul: 1.08, end: 80, badge: 'hard', points: 300, note: '100 lives · pricier towers · 80 rounds' },
-    nightmare: { name: 'Nightmare', lives: 1, cash: 650, costMul: 1.20, end: 100, badge: 'nightmare', points: 500, note: '1 life · +20% prices · 100 rounds' }
+    // ramp = the round where balloon health starts climbing (+2% per round after it); lower = harder (Easy 80, Medium 70, Hard 60, Nightmare 70)
+    easy: { name: 'Easy', lives: 150, cash: 650, costMul: 0.85, end: 40, ramp: 80, badge: 'easy', points: 100, note: '150 lives · cheaper towers · 40 rounds' },
+    medium: { name: 'Medium', lives: 100, cash: 650, costMul: 1.00, end: 60, ramp: 70, badge: 'medium', points: 200, note: '100 lives · normal prices · 60 rounds' },
+    hard: { name: 'Hard', lives: 60, cash: 650, costMul: 1.08, end: 80, ramp: 60, badge: 'hard', points: 300, note: '60 lives · pricier towers · 80 rounds' },
+    nightmare: { name: 'Nightmare', lives: 1, cash: 650, costMul: 1.20, end: 100, ramp: 70, badge: 'nightmare', points: 500, note: '1 life · +20% prices · 100 rounds' }
 };
 const BADGE_COL = { easy: '#cd7f32', medium: '#b0bec5', hard: '#ffd54f', nightmare: '#ab47bc' };
 const MODES = {
