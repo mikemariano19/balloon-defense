@@ -109,6 +109,7 @@ const MODES = {
     primary: { name: 'Primary Only', desc: 'Only Dart, Tack, Bomb and Frost towers.', towers: ['dart', 'tack', 'bomb', 'frost'] },
     notier3: { name: 'No Tier 3', desc: 'Upgrades stop at tier 2, so no abilities.' },
     reverse: { name: 'Reverse', desc: 'Balloons travel the road backwards.' },
+    hero: { name: 'Heroes', desc: 'Bring one of four heroes. It levels up as you clear rounds and has two abilities (Z and X).' },
     worldboss: { name: 'World Boss', desc: 'The weekly World Boss. Deal as much damage as you can.', hidden: true }
 };
 const CHALLENGES = ['halfcash', 'primary', 'notier3', 'reverse'];
